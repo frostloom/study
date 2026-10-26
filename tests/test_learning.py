@@ -80,4 +80,36 @@ class LearningTests(unittest.TestCase):
         self.assertEqual(len(r['questions']),2);self.assertEqual(r['questions'][0]['id'],qid)
         self.assertEqual(r['questions'][0]['answer'],'已经回答')
 
+    def test_extra_review_adds_questions_for_already_covered_reading(self):
+        self.store.generate_plan('2026-10-26');self.store.toggle('2026-10-26','a',True)
+        original=dict(date='2026-10-26',questions=[dict(id='old',question='事务是什么？',article_ids=['a'],answer='真实旧答案',grade=dict(score=2))],completed_article_ids=['a'],status='已完成')
+        self.store.save_review('2026-10-26',original)
+        class Model:
+            def generate(model,prompt,schema=None):
+                self.assertIn('事务是什么？',prompt)
+                self.assertIn('3',prompt)
+                return dict(questions=[dict(question='为什么需要事务回滚？',article_ids=['a'],reference_answer='保证原子性',criteria='解释失败恢复')])
+        result=Learning(self.store,Model()).start_review('2026-10-26',additional=True)
+        self.assertEqual(len(result['questions']),2)
+        self.assertEqual(self.store.review('2026-10-26')['questions'][0],original['questions'][0])
+        self.assertEqual(result['questions'][1]['answer'],'')
+        self.assertIsNone(result['questions'][1]['grade'])
+        self.assertEqual(result['status'],'进行中')
+        self.assertEqual(self.store.review('2026-10-26')['completed_article_ids'],['a'])
+
+    def test_extra_review_duplicate_response_does_not_overwrite_history(self):
+        self.store.generate_plan('2026-10-26');self.store.toggle('2026-10-26','a',True)
+        original=dict(date='2026-10-26',questions=[dict(id='old',question='事务是什么？',article_ids=['a'],answer='原答案',grade=dict(score=2))],completed_article_ids=['a'],status='已完成')
+        self.store.save_review('2026-10-26',original)
+        model=FakeModel([dict(questions=[dict(question='事务 是什么?',article_ids=['a'],reference_answer='原子性',criteria='正确')])])
+        with self.assertRaisesRegex(ValueError,'重复'):
+            Learning(self.store,model).start_review('2026-10-26',additional=True)
+        self.assertEqual(self.store.review('2026-10-26'),original)
+
+    def test_automatic_review_does_not_keep_adding_questions(self):
+        self.store.generate_plan('2026-10-26');self.store.toggle('2026-10-26','a',True)
+        original=dict(date='2026-10-26',questions=[dict(id='old',question='事务？',article_ids=['a'],answer='',grade=None)],completed_article_ids=['a'],status='待作答')
+        self.store.save_review('2026-10-26',original)
+        self.assertEqual(len(self.engine([]).start_review('2026-10-26')['questions']),1)
+
 if __name__=='__main__':unittest.main()

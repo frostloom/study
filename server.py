@@ -154,7 +154,7 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                     session=store.new_chat_session(p['article_id']);return self.send_json(dict(session_id=session['id'],sessions=store.chat_sessions(p['article_id']),chats=[]))
                 if route=='/api/note':return self.send_json(learning.annotate(p['article_id'],p['quote'],p['kind'],p.get('note',''),p.get('prefix',''),p.get('suffix','')))
                 if route=='/api/note/delete':store.delete_annotation(p['id']);return self.send_json({'ok':True})
-                if route=='/api/ai/review':return self.send_json(learning.start_review(p.get('date',today())))
+                if route=='/api/ai/review':return self.send_json(learning.start_review(p.get('date',today()),additional=p.get('additional',False)))
                 if route=='/api/ai/grade':return self.send_json(learning.answer_review(p['date'],p['question_id'],p['answer']))
                 if route=='/api/settings':return self.send_json(client.save_settings(p))
                 return self.send_json({'error':'接口不存在'},404)
