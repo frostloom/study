@@ -26,6 +26,7 @@ if($LASTEXITCODE -ne 0){throw 'CMake configure failed'}
 & cmake --build "$Work/windows-native" --config Release
 if($LASTEXITCODE -ne 0){throw 'Native build failed'}
 Copy-Item "$Work/windows-native/Release/DailyStudy.exe" $Stage
+[IO.File]::WriteAllText((Join-Path $Stage 'channel.txt'),$Channel,[Text.UTF8Encoding]::new($false))
 Copy-Item docs/usage.md "$Stage/README.md"
 $Licenses=Join-Path $Stage 'ThirdPartyLicenses'
 New-Item -ItemType Directory -Force $Licenses | Out-Null

@@ -12,7 +12,7 @@ case "$ARCH" in arm64) ASSET_ARCH=arm64 ;; x86_64) ASSET_ARCH=x64 ;; *) echo 'Un
 CHANNEL="${BUILD_CHANNEL:-stable}"
 APP_NAME=日常学习
 SWIFT_FLAGS=(-D RELEASE)
-if [[ "$CHANNEL" == preview ]]; then APP_NAME=日常学习预览版; SWIFT_FLAGS=(-D PREVIEW); fi
+if [[ "$CHANNEL" == preview ]]; then APP_NAME=日常学习预览版; SWIFT_FLAGS=(-D PREVIEW); ASSET_ARCH="${ASSET_ARCH}-preview"; fi
 if ! command -v "$PYTHON" >/dev/null 2>&1; then echo 'Set BUILD_PYTHON to a Python 3.12 environment with requirements-build.txt installed.' >&2; exit 1; fi
 "$PYTHON" -c 'import sys; assert sys.version_info[:2] == (3, 12), "Python 3.12 required"; import PyInstaller, certifi, pypdf'
 VERSION="$("$PYTHON" -c 'from app_info import VERSION; print(VERSION)')"
@@ -45,7 +45,7 @@ import sys
 import sysconfig
 out = pathlib.Path(sys.argv[1]); out.mkdir(parents=True, exist_ok=True)
 notes = []
-for name in ('pyinstaller', 'certifi', 'pypdf'):
+for name in ('pyinstaller', 'certifi', 'pypdf', 'tzdata'):
     dist = metadata.distribution(name)
     notes.append(f"{dist.metadata['Name']} {dist.version}: {dist.metadata.get('License-Expression') or dist.metadata.get('License', '')}")
     for rel in dist.files or ():

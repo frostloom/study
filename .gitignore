@@ -17,3 +17,4 @@ profile.json
 *.zip
 *.app/
 .DS_Store
+release-preview/

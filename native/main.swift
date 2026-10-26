@@ -85,6 +85,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
         let child = Process()
         child.executableURL = resources.appendingPathComponent("backend/study-backend")
         var args = ["--root", dataRoot.path, "--port", "0", "--channel", channel, "--parent-pid", String(ProcessInfo.processInfo.processIdentifier)]
+        #if PREVIEW
+        let cli = CommandLine.arguments
+        if let sourceIndex = cli.firstIndex(of: "--source-dir"), sourceIndex + 1 < cli.count,
+           let pythonIndex = cli.firstIndex(of: "--python"), pythonIndex + 1 < cli.count {
+            let source = URL(fileURLWithPath: cli[sourceIndex + 1]).appendingPathComponent("backend_entry.py")
+            child.executableURL = URL(fileURLWithPath: cli[pythonIndex + 1])
+            args = [source.path] + args
+        }
+        #endif
         if channel == "preview" || CommandLine.arguments.contains("--no-legacy") { args.append("--no-legacy") }
         else {
             let legacy = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("日常学习")

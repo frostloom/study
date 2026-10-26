@@ -24,7 +24,7 @@ const wchar_t* channel=L"stable";
 constexpr UINT WM_READY=WM_APP+1,WM_FAILED=WM_APP+2;
 HWND windowHandle=nullptr;HANDLE backend=nullptr,job=nullptr,instance=nullptr;
 ComPtr<ICoreWebView2Controller> controller;ComPtr<ICoreWebView2> web;
-fs::path dataRoot;std::wstring origin;bool closing=false;
+fs::path dataRoot,sourceDir,pythonExe;std::wstring origin;bool closing=false;
 std::wstring quote(const std::wstring& v){
  std::wstring r=L"\"";size_t n=0;
  for(wchar_t c:v){if(c==L'\\'){++n;continue;}if(c==L'\"')r.append(n*2+1,L'\\');else r.append(n,L'\\');n=0;r+=c;}
@@ -68,7 +68,11 @@ void startBackend(){
  SetHandleInformation(readPipe,HANDLE_FLAG_INHERIT,0);
  auto log=dataRoot/L"native-backend.log";HANDLE error=CreateFileW(log.c_str(),FILE_APPEND_DATA,FILE_SHARE_READ|FILE_SHARE_WRITE,&security,OPEN_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
  STARTUPINFOW si{};si.cb=sizeof(si);si.dwFlags=STARTF_USESTDHANDLES;si.hStdOutput=writePipe;si.hStdError=error;si.hStdInput=GetStdHandle(STD_INPUT_HANDLE);
- std::wstring cmd=quote(exe.wstring())+L" --root "+quote(dataRoot.wstring())+L" --port 0 --no-legacy --channel "+channel+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());
+ std::wstring prefix;
+ #ifdef STUDY_PREVIEW
+ if(!sourceDir.empty()&&!pythonExe.empty()){exe=pythonExe;prefix=L" "+quote((sourceDir/L"backend_entry.py").wstring());}
+ #endif
+ std::wstring cmd=quote(exe.wstring())+prefix+L" --root "+quote(dataRoot.wstring())+L" --port 0 --no-legacy --channel "+channel+L" --parent-pid "+std::to_wstring(GetCurrentProcessId());
  PROCESS_INFORMATION pi{};
  if(!CreateProcessW(exe.c_str(),cmd.data(),nullptr,nullptr,TRUE,CREATE_NO_WINDOW|CREATE_SUSPENDED,nullptr,exe.parent_path().c_str(),&si,&pi)){
   CloseHandle(writePipe);CloseHandle(readPipe);if(error!=INVALID_HANDLE_VALUE)CloseHandle(error);PostMessageW(windowHandle,WM_FAILED,0,0);return;
@@ -112,7 +116,16 @@ int WINAPI wWinMain(HINSTANCE app,HINSTANCE,LPWSTR,int show){
  SetEnvironmentVariableW(L"PYTHONUTF8",L"1");
  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
  PWSTR local=nullptr;SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local);dataRoot=fs::path(local?local:L".")/(std::wstring(channel)==L"preview"?L"DailyStudy Preview":L"DailyStudy");CoTaskMemFree(local);
- int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);for(int i=1;i+1<argc;i++)if(std::wstring(argv[i])==L"--data-dir")dataRoot=argv[++i];LocalFree(argv);
+ int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);
+ for(int i=1;i+1<argc;i++){
+  std::wstring arg=argv[i];
+  if(arg==L"--data-dir")dataRoot=argv[++i];
+  #ifdef STUDY_PREVIEW
+  else if(arg==L"--source-dir")sourceDir=argv[++i];
+  else if(arg==L"--python")pythonExe=argv[++i];
+  #endif
+ }
+ LocalFree(argv);
  std::wstring mutex=L"Local\\DailyStudy-"+std::to_wstring(std::hash<std::wstring>{}(dataRoot.wstring()));instance=CreateMutexW(nullptr,FALSE,mutex.c_str());
  if(GetLastError()==ERROR_ALREADY_EXISTS){MessageBoxW(nullptr,L"应用已经打开，请切换到已有学习窗口。",title,MB_OK);return 0;}
  WNDCLASSW wc{};wc.lpfnWndProc=WindowProc;wc.hInstance=app;wc.lpszClassName=L"DailyStudyWindow";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);RegisterClassW(&wc);
