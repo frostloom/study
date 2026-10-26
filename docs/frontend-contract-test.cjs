@@ -1,0 +1,38 @@
+const assert=require('node:assert/strict');
+const fs=require('node:fs'),vm=require('node:vm');
+const ctx={window:{},document:{},setTimeout,clearTimeout};vm.createContext(ctx);
+if(fs.existsSync('static/release-ui.js'))vm.runInContext(fs.readFileSync('static/release-ui.js','utf8'),ctx);
+const ui=ctx.window.ReleaseUI;
+assert.ok(ui,'release UI module is available');
+assert.equal(ui.validateStep(0,{},{ready:false},[]),'请先保存模型设置并测试连接。');
+assert.ok(ui.validateStep(1,{goal:'',topics:[]},{ready:true},[]));
+assert.equal(ui.validateStep(1,{goal:'学习数据库',topics:[]},{ready:true},[]),'');
+assert.ok(ui.validateStep(4,{daily_minutes:30,review_minutes:35},{},[]));
+assert.ok(ui.validateStep(4,{daily_minutes:600,review_minutes:30},{},[]));
+assert.ok(ui.validateStep(4,{daily_minutes:60,review_minutes:0},{},[]));
+assert.ok(ui.validateStep(3,{topics:['PostgreSQL'],resource_ids:['demo'],use_existing:true},{},[{id:'demo',topic:'PostgreSQL',demo:true}]));
+assert.equal(ui.validateStep(3,{topics:['PostgreSQL'],resource_ids:['real'],use_existing:false},{},[{id:'real',topic:'PostgreSQL'}]),'');
+console.log('frontend contracts passed');
+const replay={id:'release-tour',removed:false,focus(){},remove(){this.removed=true;nodes.delete(this.id);}};
+const nodes=new Map([[replay.id,replay]]);
+ctx.document={activeElement:replay,querySelector:s=>nodes.get(s.slice(1))||null,
+ createElement:()=>({setAttribute(){},focus(){},remove(){nodes.delete(this.id);}}),
+ body:{append(el){nodes.set(el.id,el);nodes.set('release-tour-skip',{});nodes.set('release-tour-next',{});}}};
+vm.runInContext(fs.readFileSync('static/release-tour.js','utf8'),ctx);
+ctx.window.ReleaseTour.offer({demo_id:'welcome-demo'});
+assert.equal(replay.removed,false,'opening a guide must preserve the settings replay control');
+assert.ok(nodes.has('release-tour-overlay'),'guide has its own overlay container');
+ctx.window.ReleaseTour.close();
+assert.equal(nodes.get('release-tour'),replay,'closing guide must preserve replay control');
+assert.equal(nodes.has('release-tour-overlay'),false,'closing guide removes the overlay');
+console.log('tour lifecycle passed');
+const modelLabel={textContent:'模型 · 未配置'};
+nodes.set('model-label',modelLabel);
+ctx.state={status:{model:{model:'',ready:false}}};ctx.location={hash:''};ctx.go=async()=>{};
+ctx.document.body.classList={remove(){}};
+ui.start({profile:{onboarding_completed:true,daily_minutes:60,review_minutes:15},model:{model:'test-model',ready:true}});
+assert.equal(modelLabel.textContent,'模型 · 未配置','removed sidebar status is not rewritten');
+assert.equal(ctx.state.status.model.model,'test-model','legacy status consumers receive current model');
+assert.equal(ctx.state.setup.model.model,'test-model','setup consumers receive current model');
+assert.match(fs.readFileSync('static/release-ui.css','utf8'),/\.release-tabs\{[^}]*flex-direction:row/,'settings tabs override global column navigation');
+console.log('model synchronization and tabs passed');

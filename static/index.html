@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+<head><meta charset="utf-8"><script src="/theme.js?v=20261026-sessions2"></script><meta name="viewport" content="width=device-width,initial-scale=1"><title>日常学习</title><link rel="stylesheet" href="/style.css?v=20261026-sessions2"><script src="/vendor/marked.js" defer></script><script src="/vendor/purify.js" defer></script><script src="/library.js?v=20261026-sessions2" defer></script><script src="/app.js?v=20261026-sessions2" defer></script><link rel="stylesheet" href="/polish.css?v=20261026-sessions2"><script src="/ai-drawer.js?v=20261026-sessions2" defer></script><link rel="stylesheet" href="/theme.css?v=20261026-sessions2"><link rel="stylesheet" href="/release-ui.css?v=1.0.0"><script src="/release-ui.js?v=1.0.0" defer></script><script src="/release-tour.js?v=1.0.0" defer></script><script src="/release-library.js?v=1.0.0" defer></script><script src="/boot.js?v=1.0.0" defer></script><link rel="stylesheet" href="/updates.css"><script src="/updates.js" defer></script></head>
+<body>
+<div id="setup-root" hidden></div>
+<aside class="sidebar">
+  <a class="brand" href="#today"><span class="brand-symbol">学</span><span>日常学习</span></a>
+  <div class="sidebar-label">我的学习空间</div>
+  <nav aria-label="主导航">
+    <button data-view="today" class="active"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16v15H4z M8 3v4 M16 3v4 M4 10h16 M8 14h3 M8 17h6"/></svg><span class="nav-text">今日待办</span></button>
+    <button data-view="library"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v16H4z M13 5l5-1 3 15-5 1z"/></svg><span class="nav-text">资料库</span></button>
+    <button data-view="notes"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v17H5z M9 9h6 M9 13h6 M9 17h3"/></svg><span class="nav-text">重点与批注</span></button>
+    <button data-view="review"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4h14v16H5z M8 8h8 M8 12l2 2 5-5 M8 17h6"/></svg><span class="nav-text">晚间复习</span></button>
+    <button data-view="history"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5v5h5 M4 10a8 8 0 1 1 2 8 M12 7v5l3 2"/></svg><span class="nav-text">学习历史</span></button>
+    <button data-view="settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16 M4 17h16 M9 4v6 M15 14v6"/></svg><span class="nav-text">设置</span></button>
+  </nav>
+  <button id="app-update" class="app-update" hidden aria-label="有新版本，立即更新"></button>
+</aside>
+<main class="workspace">
+  <header class="topbar"><span id="breadcrumb">我的学习 / 今日待办</span><div class="topbar-controls"><label class="theme-control">背景<select id="theme-select" data-theme-select aria-label="页面背景"><option value="white">白色</option><option value="dark">黑色</option><option value="paper">护眼纸色</option></select></label><label>学习日期<input id="day-picker" type="date" aria-label="学习日期"></label></div></header>
+  <div id="page" class="page" aria-live="polite"></div>
+</main>
+<div id="toast" role="status" hidden></div>
+<section id="reader" class="reader-shell" role="dialog" hidden aria-label="原文阅读">
+  <header class="reader-top"><button id="close-reader" class="ghost">返回目录</button><span id="reader-topic"></span><div><button id="toggle-ai" class="ghost small" aria-expanded="false" aria-controls="ai-drawer">问问 AI</button><select class="reader-theme" data-theme-select aria-label="阅读背景"><option value="white">白色</option><option value="dark">黑色</option><option value="paper">护眼纸色</option></select><a id="original-link" target="_blank" rel="noopener noreferrer">原文网页</a><button id="add-today" class="secondary">加入今日待办</button></div></header>
+  <div class="reader-layout"><div class="reader-scroll" id="reader-scroll"><div class="reader-meta" id="reader-meta"></div><h1 id="reader-title"></h1><details class="reader-outline" id="reader-outline"><summary id="outline-summary">本模块目录</summary><div id="outline-links"></div></details><article id="article-body" class="prose"></article><section id="article-notes" class="article-notes"></section></div>
+    <aside class="ai-panel" id="ai-drawer" aria-labelledby="ai-title" hidden>
+      <header class="ai-panel-heading"><div class="ai-heading-copy"><span class="ai-emblem" aria-hidden="true">✧</span><div><h2 id="ai-title">问问 AI</h2><small id="ai-section-label">当前小节</small></div></div><div class="ai-header-actions"><button id="new-ai" class="session-action" title="开启空对话，保留历史">新对话</button><button id="history-ai" class="session-action" aria-expanded="false" aria-controls="ai-sessions">历史</button><button id="close-ai" class="icon-button" aria-label="关闭AI面板" title="关闭（Esc）">×</button></div></header><section id="ai-sessions" class="ai-sessions" aria-label="历史会话" hidden><div class="ai-sessions-heading">历史会话<span>选择后可继续追问</span></div><div id="ai-session-list"></div></section>
+      <div id="chat-list" class="chat-list" aria-live="polite"></div>
+      <div id="selected-quote" class="selected-quote" hidden><div class="quote-caption"><span>选中的原文</span><button id="clear-quote" class="icon-button" aria-label="移除引用" title="移除引用">×</button></div><blockquote id="quote-text"></blockquote></div>
+      <div id="ai-quick-prompts" class="ai-quick-prompts"><button data-ai-prompt="请用一个简单例子解释这段内容。">用例子解释</button><button data-ai-prompt="这段知识可以如何应用？请给出一个贴合当前学习目标的例子。">如何应用</button><button data-ai-prompt="请指出理解这段内容时最容易混淆的地方，并说明适用边界。">容易混淆哪里</button></div>
+      <form id="ask-form"><label class="sr-only" for="ask-input">向AI提问</label><textarea id="ask-input" rows="3" placeholder="写下你的问题，或试试上面的快捷提问…"></textarea><div id="ai-error" class="inline-error" role="alert" hidden></div><div class="ai-compose-footer"><small>⌘ / Ctrl + Enter 发送</small><button class="primary" id="ask-button" type="submit">发送问题</button></div></form>
+    </aside>
+  </div>
+  <footer class="reader-bottom"><button id="reader-previous" class="secondary small">上一模块</button><span id="reader-position"></span><button id="reader-next" class="secondary small">下一模块</button></footer>
+</section>
+<div id="selection-menu" class="selection-menu" hidden><button data-selection="highlight">划重点</button><button data-selection="note">做批注</button><button data-selection="ask">问问 AI</button></div>
+<dialog id="note-dialog"><form id="note-form"><h2>给这段话做批注</h2><blockquote id="note-quote"></blockquote><label for="note-input">我的理解或疑问</label><textarea id="note-input" rows="5" required placeholder="写下自己的理解，或以后想再确认的问题"></textarea><div class="dialog-actions"><button id="cancel-note" class="ghost" type="button">取消</button><button class="primary" type="submit">保存批注</button></div></form></dialog>
+<script type="application/json" id="app-meta">{"local":true}</script>
+</body></html>

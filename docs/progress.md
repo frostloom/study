@@ -1,0 +1,7 @@
+# SDD ledger — plan: docs/superpowers/plans/2026-10-26-distribution.md
+Ruling: Prior direct-completion instruction + current explicit publish request authorize continuous implementation, migration and release. Fresh builder check: no unresolved choices.
+Ruling: Isolated /private/tmp checkout; persistent development clone /Users/a1/日常学习/开发版; installed stable/data untouched until backup.
+Preflight: Tasks1-3 share VERSION/channel, paths, asset names; task2 only accepts task3-generated trusted assets. Task4 migrates stable only. Interfaces consistent.
+User correction: update checks are automatic at startup and every6h; show sidebar update button only when new stable available, not requiring a manual check.
+Task1 complete: actual subprocess lock exclusivity/release and separate platform roots pass. Non-UTF8 locale config failure reproduced RED (UnicodeEncodeError); explicit UTF8 read/write fixed GREEN. Native stable/preview compile flags and data identities implemented. Baseline83 tests passed; task1 suite86 passed before encoding regression; full suite rerun after each batch.
+Task2 complete:6 update semantics tests pass; auto-notice behavior test first exposed insufficient test microtask draining, test now waits next event-loop turn and verifies startup fetch,6h polling and no preview checks. No product delay added. API cached latest stable fetch and hidden-until-new-version sidebar implemented.
