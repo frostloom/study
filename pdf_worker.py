@@ -14,6 +14,9 @@ class PDFLimitError(BaseException):
 
 
 def _limits():
+    if sys.platform=='win32':
+        from process_limits import windows_pdf_limits
+        windows_pdf_limits();return
     try:
         import resource
         for kind,limit in ((resource.RLIMIT_CPU,8),(resource.RLIMIT_AS,512*1024*1024),(resource.RLIMIT_DATA,384*1024*1024),(resource.RLIMIT_FSIZE,16*1024*1024),(resource.RLIMIT_NOFILE,64)):

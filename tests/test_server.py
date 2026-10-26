@@ -47,4 +47,16 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(cm.exception.code,403)
         self.assertEqual(self.request('/api/handoff?date=2026-10-26')['completed'],[])
 
-if __name__=='__main__':unittest.main()
+    def test_backup_contains_learning_data_without_runtime_or_webview_files(self):
+        self.start()
+        (self.root/'.runtime.lock').write_bytes(b'locked runtime')
+        (self.root/'.server-info.json').write_text('{}',encoding='utf-8')
+        webview=self.root/'WebView2';webview.mkdir();(webview/'locked-cache').write_bytes(b'cache')
+        result=self.request('/api/data/backup',{})
+        import zipfile
+        with zipfile.ZipFile(result['path']) as z:
+            names=z.namelist()
+            self.assertIn('学习台/data/study.sqlite3',names)
+            self.assertNotIn('.runtime.lock',names)
+            self.assertNotIn('.server-info.json',names)
+            self.assertFalse(any(x.startswith('WebView2/') for x in names))

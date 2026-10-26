@@ -44,7 +44,7 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
             with sqlite3.connect(store.db) as src,sqlite3.connect(db) as out:src.backup(out)
             with zipfile.ZipFile(dest,'w',zipfile.ZIP_DEFLATED) as z:
                 for f in root.rglob('*'):
-                    if not f.is_file() or f.is_symlink() or f.is_relative_to(folder) or f.name in ['study.sqlite3','study.sqlite3-wal','study.sqlite3-shm','模型设置.json','server.log']:continue
+                    if not f.is_file() or f.is_symlink() or f.is_relative_to(folder) or f.is_relative_to(root/'WebView2') or f.name in ['study.sqlite3','study.sqlite3-wal','study.sqlite3-shm','模型设置.json','server.log','native-backend.log','.runtime.lock','.server-info.json','.window-state.json']:continue
                     z.write(f,str(f.relative_to(root)))
                 z.write(db,'学习台/data/study.sqlite3')
         return dict(path=str(dest))
@@ -65,6 +65,8 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                 if u.path=='/api/app':return self.send_json(public_info(channel))
                 if u.path=='/api/updates':return self.send_json(updater.check())
                 if u.path=='/api/setup':return self.send_json(setup_payload())
+                if u.path=='/api/browser-state':
+                    f=store.data/'browser-transfer.json';return self.send_json(json.loads(f.read_text(encoding='utf-8')) if channel=='stable' and f.exists() else {})
                 if u.path=='/api/demo':return self.send_json({'article_id':'welcome-demo'})
                 if u.path=='/api/jobs':return self.send_json(jobs.get(q.get('id',[''])[0]))
                 if u.path=='/api/status':
@@ -113,6 +115,10 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                 if not isinstance(p,dict):raise ValueError('请求必须是对象')
                 route=urlsplit(self.path).path
                 if route=='/api/updates/check':return self.send_json(updater.check(force=True))
+                if route=='/api/browser-state/complete':
+                    f=store.data/'browser-transfer.json'
+                    if channel=='stable' and f.exists() and json.loads(f.read_text(encoding='utf-8')).get('id')==p.get('id'):f.rename(f.with_suffix('.imported'))
+                    return self.send_json({'ok':True})
                 if route=='/api/setup/draft':return self.send_json(profile.save(p.get('profile',{})))
                 if route=='/api/setup/complete':
                     value=profile.save(p.get('profile',{}))

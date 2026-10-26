@@ -10,6 +10,7 @@
 #include <thread>
 #include <regex>
 #include <vector>
+#include <fstream>
 using Microsoft::WRL::ComPtr;
 using Microsoft::WRL::Callback;
 namespace fs=std::filesystem;
@@ -51,6 +52,7 @@ void showWeb(const std::wstring& url){
      BOOL user=FALSE;args->get_IsUserInitiated(&user);if(own(url))web->Navigate(url.c_str());else if(user)external(url);return S_OK;
     }).Get(),&token);
     web->add_ProcessFailed(Callback<ICoreWebView2ProcessFailedEventHandler>([](ICoreWebView2*,ICoreWebView2ProcessFailedEventArgs*)->HRESULT{fail(L"页面进程已停止，请退出并重新启动应用。学习记录会保留。");return S_OK;}).Get(),&token);
+    SetTimer(windowHandle,2,500,nullptr);
     return web->Navigate(origin.c_str());
    }).Get());
   }).Get());
@@ -91,7 +93,14 @@ LRESULT CALLBACK WindowProc(HWND h,UINT m,WPARAM w,LPARAM l){
  switch(m){
  case WM_READY:{KillTimer(h,1);auto* value=reinterpret_cast<std::wstring*>(l);showWeb(*value);delete value;return 0;}
  case WM_FAILED:KillTimer(h,1);fail(L"学习服务启动失败。请确认没有另一个窗口使用相同数据，并检查数据目录中的 native-backend.log。关闭窗口后重试。");return 0;
- case WM_TIMER:if(w==1){KillTimer(h,1);fail(L"启动超过30秒。请关闭应用，检查数据目录权限后重试。");}return 0;
+ case WM_TIMER:
+  if(w==1){KillTimer(h,1);fail(L"启动超过30秒。请关闭应用，检查数据目录权限后重试。");}
+  if(w==2&&web){web->ExecuteScript(L"Boolean(window.ReleaseUI && document.querySelector('h1') && document.querySelector('h1').textContent.trim())",Callback<ICoreWebView2ExecuteScriptCompletedHandler>([](HRESULT result,LPCWSTR value)->HRESULT{
+   if(SUCCEEDED(result)&&value&&std::wstring(value)==L"true"){
+    KillTimer(windowHandle,2);
+    std::ofstream state(dataRoot/L".window-state.json");state<<"{\"ready\":true}";
+   }return S_OK;
+  }).Get());}return 0;
  case WM_SIZE:if(controller){RECT r;GetClientRect(h,&r);controller->put_Bounds(r);}return 0;
  case WM_GETMINMAXINFO:{auto* info=reinterpret_cast<MINMAXINFO*>(l);info->ptMinTrackSize={980,700};return 0;}
  case WM_CLOSE:DestroyWindow(h);return 0;
@@ -100,6 +109,7 @@ LRESULT CALLBACK WindowProc(HWND h,UINT m,WPARAM w,LPARAM l){
  return DefWindowProcW(h,m,w,l);
 }
 int WINAPI wWinMain(HINSTANCE app,HINSTANCE,LPWSTR,int show){
+ SetEnvironmentVariableW(L"PYTHONUTF8",L"1");
  SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED);
  PWSTR local=nullptr;SHGetKnownFolderPath(FOLDERID_LocalAppData,0,nullptr,&local);dataRoot=fs::path(local?local:L".")/(std::wstring(channel)==L"preview"?L"DailyStudy Preview":L"DailyStudy");CoTaskMemFree(local);
  int argc=0;LPWSTR* argv=CommandLineToArgvW(GetCommandLineW(),&argc);for(int i=1;i+1<argc;i++)if(std::wstring(argv[i])==L"--data-dir")dataRoot=argv[++i];LocalFree(argv);
