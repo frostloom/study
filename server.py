@@ -1,3 +1,4 @@
+from contextlib import closing
 from datetime import datetime
 from http.server import BaseHTTPRequestHandler,ThreadingHTTPServer
 import argparse
@@ -41,7 +42,7 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
         folder=root/'备份';folder.mkdir(exist_ok=True);dest=folder/(datetime.now().strftime('%Y%m%d-%H%M%S')+'-日常学习.zip')
         with tempfile.TemporaryDirectory() as t:
             db=Path(t)/'study.sqlite3'
-            with sqlite3.connect(store.db) as src,sqlite3.connect(db) as out:src.backup(out)
+            with closing(sqlite3.connect(store.db)) as src,closing(sqlite3.connect(db)) as out,out:src.backup(out)
             with zipfile.ZipFile(dest,'w',zipfile.ZIP_DEFLATED) as z:
                 for f in root.rglob('*'):
                     if not f.is_file() or f.is_symlink() or f.is_relative_to(folder) or f.is_relative_to(root/'WebView2') or f.name in ['study.sqlite3','study.sqlite3-wal','study.sqlite3-shm','模型设置.json','server.log','native-backend.log','.runtime.lock','.server-info.json','.window-state.json']:continue

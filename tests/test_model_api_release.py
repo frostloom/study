@@ -13,7 +13,7 @@ class ModelAPIReleaseTests(unittest.TestCase):
    m=ModelClient(t);self.assertEqual(m.settings()['provider'],'api')
    m.save_settings({'base_url':'https://example.com/v1','model':'test','api_key':'private-secret'})
    self.assertNotIn('private-secret',json.dumps(m.public_settings()));self.assertFalse(m.public_settings()['ready'])
-   self.assertEqual(os.stat(m.config_path).st_mode&0o777,0o600)
+   if os.name!='nt':self.assertEqual(os.stat(m.config_path).st_mode&0o777,0o600)
  def test_changed_endpoint_clears_old_key_and_verification(self):
   with tempfile.TemporaryDirectory() as t:
    m=ModelClient(t);m.save_settings({'base_url':'https://example.com/v1','model':'x','api_key':'s'})

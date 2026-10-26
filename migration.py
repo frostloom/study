@@ -1,4 +1,5 @@
 """Copy legacy materials and a consistent SQLite snapshot without changing originals."""
+from contextlib import closing
 from pathlib import Path
 import json,os,shutil,sqlite3,uuid
 from profile_settings import Profile
@@ -17,7 +18,7 @@ def migrate_legacy(root,legacy):
    if (legacy/rel).is_file():shutil.copy2(legacy/rel,stage/rel)
   data=stage/'学习台/data';data.mkdir(parents=True,exist_ok=True)
   if (legacy/'学习台/data/study.sqlite3').exists():
-   with sqlite3.connect(legacy/'学习台/data/study.sqlite3') as src,sqlite3.connect(data/'study.sqlite3') as dest:src.backup(dest)
+   with closing(sqlite3.connect(legacy/'学习台/data/study.sqlite3')) as src,closing(sqlite3.connect(data/'study.sqlite3')) as dest,dest:src.backup(dest)
   catalog=json.loads((data/'catalog.json').read_text(encoding='utf-8'))
   for a in catalog:
    path=(stage/a['path']).resolve()
@@ -31,7 +32,7 @@ def migrate_legacy(root,legacy):
   profile=Profile(stage);values={'use_existing':True,'daily_minutes':180,'review_minutes':60,'goal':'继续已有学习','topics':[]}
   if (data/'study.sqlite3').exists():
    try:
-    with sqlite3.connect(data/'study.sqlite3') as db:
+    with closing(sqlite3.connect(data/'study.sqlite3')) as db,db:
      row=db.execute('SELECT body FROM plans ORDER BY day DESC LIMIT 1').fetchone()
      if row:
       p=json.loads(row[0]);values.update(daily_minutes=p.get('reading_minutes',120)+p.get('review_minutes',60),review_minutes=p.get('review_minutes',60))

@@ -1,4 +1,5 @@
 """Explicit local migration; never runs in preview or uploads personal state."""
+from contextlib import closing
 from pathlib import Path
 import json,os,shutil,sqlite3,uuid
 from profile_settings import Profile
@@ -27,7 +28,7 @@ def migrate_web_settings(web_root,app_root,backup_root):
   for n in ['模型设置.json','profile.json','catalog.json','browser-transfer.json']:
    if (data/n).is_file():shutil.copy2(data/n,folder/n);os.chmod(folder/n,0o600)
   if (data/'study.sqlite3').exists():
-   with sqlite3.connect(f'file:{data/"study.sqlite3"}?mode=ro',uri=True) as src,sqlite3.connect(folder/'study.sqlite3') as dst:src.backup(dst)
+   with closing(sqlite3.connect(f'file:{data/"study.sqlite3"}?mode=ro',uri=True)) as src,closing(sqlite3.connect(folder/'study.sqlite3')) as dst,dst:src.backup(dst)
    os.chmod(folder/'study.sqlite3',0o600)
  report=dict(backup=str(backup),added_records=0,added_materials=0,conflicts=[])
  original=json.loads((wd/'catalog.json').read_text(encoding='utf-8'));current=json.loads((ad/'catalog.json').read_text(encoding='utf-8')) if (ad/'catalog.json').exists() else []
@@ -44,7 +45,7 @@ def migrate_web_settings(web_root,app_root,backup_root):
  if (wd/'study.sqlite3').exists():
   from store import Store
   Store(app,current)
-  with sqlite3.connect(backup/'web/study.sqlite3') as src,sqlite3.connect(ad/'study.sqlite3') as dst:
+  with closing(sqlite3.connect(backup/'web/study.sqlite3')) as src,closing(sqlite3.connect(ad/'study.sqlite3')) as dst,dst:
    src.row_factory=sqlite3.Row
    for table in ['plans','checks','annotations','chat_sessions','reviews','prior_readings','visits','conversations']:
     columns=[r[1] for r in src.execute('PRAGMA table_info('+table+')')]

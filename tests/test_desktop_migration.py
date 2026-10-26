@@ -1,3 +1,4 @@
+from contextlib import closing
 import unittest,tempfile,json,sqlite3
 from pathlib import Path
 from store import Store
@@ -10,12 +11,12 @@ class DesktopMigrationTests(unittest.TestCase):
     d=root/'学习台/data';d.mkdir(parents=True);(d/'catalog.json').write_text('[]',encoding='utf-8');Store(root,[])
    cfg={'provider':'api','base_url':'https://example.com/v1','model':'fixture','api_key':'test-only','auto_plan':True,'auto_review':False,'plan_time':'09:00','review_time':'22:00'}
    (web/'学习台/data/模型设置.json').write_text(json.dumps(cfg),encoding='utf-8')
-   with sqlite3.connect(web/'学习台/data/study.sqlite3') as db:
+   with closing(sqlite3.connect(web/'学习台/data/study.sqlite3')) as db,db:
     db.execute('INSERT INTO prior_readings VALUES (?,?,?)',('prior','2026-10-25','read'))
     db.execute('INSERT INTO plans VALUES (?,?)',('2026-10-26','{"source":"web"}'))
-   with sqlite3.connect(app/'学习台/data/study.sqlite3') as db:db.execute('INSERT INTO plans VALUES (?,?)',('2026-10-26','{"source":"desktop"}'))
+   with closing(sqlite3.connect(app/'学习台/data/study.sqlite3')) as db,db:db.execute('INSERT INTO plans VALUES (?,?)',('2026-10-26','{"source":"desktop"}'))
    result=migrate_web_settings(web,app,backup)
-   with sqlite3.connect(app/'学习台/data/study.sqlite3') as db:
+   with closing(sqlite3.connect(app/'学习台/data/study.sqlite3')) as db,db:
     self.assertEqual(json.loads(db.execute('SELECT body FROM plans').fetchone()[0])['source'],'desktop')
     self.assertEqual(db.execute('SELECT count(*) FROM prior_readings').fetchone()[0],1)
    self.assertEqual(json.loads((app/'学习台/data/模型设置.json').read_text(encoding='utf-8'))['api_key'],'test-only')
