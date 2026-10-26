@@ -10,3 +10,9 @@ body.setup-mode>.sidebar,body.setup-mode>.workspace{display:none}#setup-root[hid
 .release-tour[data-step="2"]{left:24px;right:auto}@media(max-width:760px){.release-tour[data-step="2"]{left:16px;top:150px;bottom:auto;max-height:calc(100dvh - 340px)}}
 /* Inputs remain distinguishable in each monochrome theme, including paper. */
 .release-field input,.release-field textarea,.release-field select{border-color:var(--secondary)}
+
+/* Library management keeps the reading hierarchy and uses the active theme. */
+.material-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.material-actions>span{font-size:14px;color:var(--muted)}
+.material-select-all{display:flex;gap:10px;align-items:center;margin:20px 0;font-size:14px}.material-book{cursor:pointer}.material-book input,.contents-row>input{width:18px;height:18px;flex:none;accent-color:var(--ink);cursor:pointer}.material-book{justify-content:flex-start;gap:16px}
+button.danger{color:var(--ink);border-color:var(--ink)}button.danger:disabled{opacity:.4;cursor:not-allowed}
+.delete-material-dialog{background:var(--bg,#fff);color:var(--ink,#222);border:1px solid var(--line,#ddd);border-radius:16px;padding:28px;width:min(480px,calc(100vw - 48px));box-shadow:0 18px 80px #0003}.delete-material-dialog::backdrop{background:#0005}.delete-material-dialog h2{margin:0 0 16px;font-size:22px}.delete-material-dialog p{line-height:1.8}.delete-material-dialog .material-actions{justify-content:flex-end;margin-top:24px}.delete-material-dialog [data-error]:empty{display:none}

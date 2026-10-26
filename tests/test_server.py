@@ -47,6 +47,18 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(cm.exception.code,403)
         self.assertEqual(self.request('/api/handoff?date=2026-10-26')['completed'],[])
 
+    def test_delete_api_removes_catalog_plan_and_file_with_origin_guard(self):
+        self.start();self.httpd.store.generate_plan('2026-10-26')
+        with self.assertRaises(urllib.error.HTTPError) as cm:
+            self.request('/api/resources/delete',{'article_ids':['whole']},'https://evil.example')
+        self.assertEqual(cm.exception.code,403)
+        self.assertEqual(self.request('/api/resources/delete',{'article_ids':['whole']},self.base)['deleted_ids'],['whole'])
+        self.assertEqual(self.request('/api/catalog'),[])
+        self.assertEqual(self.request('/api/day?date=2026-10-26')['items'],[])
+        self.assertFalse((self.root/'资料源/whole.md').exists())
+        with self.assertRaises(urllib.error.HTTPError) as cm:self.request('/api/article?id=whole')
+        self.assertEqual(cm.exception.code,404)
+
     def test_backup_contains_learning_data_without_runtime_or_webview_files(self):
         self.start()
         (self.root/'.runtime.lock').write_bytes(b'locked runtime')

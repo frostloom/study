@@ -30,6 +30,7 @@ class Store:
         self.lock = threading.RLock()
         with self.connect() as c:
             c.executescript('''
+              CREATE TABLE IF NOT EXISTS deleted_resources(article_id TEXT PRIMARY KEY, body TEXT NOT NULL);
               CREATE TABLE IF NOT EXISTS plans(day TEXT PRIMARY KEY, body TEXT NOT NULL);
               CREATE TABLE IF NOT EXISTS checks(day TEXT, article_id TEXT, done INTEGER NOT NULL,
                 updated TEXT NOT NULL, PRIMARY KEY(day,article_id));
@@ -50,6 +51,10 @@ class Store:
                 c.execute('INSERT OR IGNORE INTO chat_sessions VALUES (?,?,?)',(sid,row['article_id'],row['created']))
                 if not body.get('session_id'):
                     body['session_id']=sid;c.execute('UPDATE conversations SET body=? WHERE id=?',(json.dumps(body,ensure_ascii=False),row['id']))
+
+        with self.connect() as c:
+            self.deleted={r['article_id']:json.loads(r['body']) for r in c.execute('SELECT * FROM deleted_resources')}
+        self.catalog={aid:a for aid,a in self.catalog.items() if aid not in self.deleted}
 
     @contextmanager
     def connect(self):
@@ -72,9 +77,10 @@ class Store:
                 'SELECT article_id,done FROM checks WHERE day=?', (day,))}
         if not row: return None
         p = json.loads(row['body'])
+        p['items']=[x for x in p['items'] if x['article_id'] in self.catalog or (checks.get(x['article_id']) and x['article_id'] in self.deleted)]
         for item in p['items']:
-            article = self.catalog.get(item['article_id'])
-            if not article: continue
+            article = self.catalog.get(item['article_id']) or self.deleted.get(item['article_id'])
+            item['deleted']=item['article_id'] not in self.catalog
             item.update(title=article['title'], topic=article['topic'], source_url=article['source_url'],
                         done=checks.get(item['article_id'], False))
         p['completed_minutes'] = sum(x['minutes'] for x in p['items'] if x.get('done'))
@@ -131,7 +137,7 @@ class Store:
         if not isinstance(done, bool): raise ValueError('勾选状态必须为布尔值')
         with self.lock:
             p=self._load(day)
-            if not p or article_id not in {x['article_id'] for x in p['items']}:
+            if not p or article_id not in self.catalog or article_id not in {x['article_id'] for x in p['items']}:
                 raise ValueError('文章不在这一天的待办中')
             with self.connect() as c:
                 c.execute('INSERT INTO checks VALUES (?,?,?,?) ON CONFLICT(day,article_id) DO UPDATE SET done=excluded.done,updated=excluded.updated',
@@ -150,19 +156,21 @@ class Store:
             raise ValueError('文章ID必须为无重复列表')
         if any(a not in self.catalog for a in article_ids): raise ValueError('资料ID不存在')
         with self.lock:
+            if any(a not in self.catalog for a in article_ids):raise ValueError('资料已删除，请重新生成计划')
             old=self._load(day)
-            done={x['article_id'] for x in old['items'] if x.get('done')} if old else set()
+            done={x['article_id'] for x in old['items'] if x.get('done') and not x.get('deleted')} if old else set()
             if not done.issubset(article_ids): raise ValueError('不能移除当天已完成的项目')
             reading,review=self.budget()
             if old:reading,review=old.get('reading_minutes',reading),old.get('review_minutes',review)
             allocations=allocations or {};scopes=scopes or {}
             minutes={a:allocations.get(a,self.catalog[a]['minutes']) for a in article_ids}
             if any(type(v) is not int or not 1<=v<=self.catalog[a]['minutes'] for a,v in minutes.items()):raise ValueError('阅读安排时间无效')
-            cost=sum(minutes.values())
+            archived=[x for x in old['items'] if x.get('deleted') and x.get('done')] if old else []
+            cost=sum(minutes.values())+sum(x['minutes'] for x in archived)
             if cost>reading:raise ValueError(f'阅读估时超过当天的{reading}分钟预算，请减少内容')
             p=dict(id=f'day-{day}',date=day,reading_minutes=reading,review_minutes=review,
                    focus=self.catalog[article_ids[0]]['topic'] if article_ids else '复习与补充',
-                   note=str(note)[:1000],items=[dict(article_id=a,minutes=minutes[a],scope=str(scopes.get(a,''))[:1000],partial=minutes[a]<self.catalog[a]['minutes'],kind='new',origin_day=None) for a in article_ids])
+                   note=str(note)[:1000],items=[dict(article_id=a,minutes=minutes[a],scope=str(scopes.get(a,''))[:1000],partial=minutes[a]<self.catalog[a]['minutes'],kind='new',origin_day=None) for a in article_ids]+archived)
             with self.connect() as c:c.execute('INSERT INTO plans VALUES (?,?) ON CONFLICT(day) DO UPDATE SET body=excluded.body',(day,json.dumps(p,ensure_ascii=False)))
             self.export(day)
             return self._load(day)
@@ -171,7 +179,7 @@ class Store:
         with self.lock:
             old=self._load(valid_day(day))
             if not old:raise ValueError("请先生成当天的AI计划，再手动加入文章")
-            ids=[x['article_id'] for x in old['items']]
+            ids=[x['article_id'] for x in old['items'] if not x.get('deleted')]
             if aid not in ids:ids.append(aid)
             return self.replace_plan(day,ids,'手动加入完整文章；其余待办与勾选已保留',allocations={x['article_id']:x['minutes'] for x in old['items']},scopes={x['article_id']:x.get('scope','') for x in old['items']})
 
@@ -180,8 +188,8 @@ class Store:
         if not p:return dict(date=day,completed=[],pending=[],assessment_status='尚未生成计划')
         def article(x):
             a=dict(self.catalog[x['article_id']]);a.update(done=x.get('done',False),partial=x.get('partial',False),scope=x.get('scope',''));return a
-        return dict(date=day,completed=[article(x) for x in p['items'] if x.get('done')],
-                    pending=[article(x) for x in p['items'] if not x.get('done')],
+        return dict(date=day,completed=[article(x) for x in p['items'] if x.get('done') and not x.get('deleted')],
+                    pending=[article(x) for x in p['items'] if not x.get('done') and not x.get('deleted')],
                     completed_minutes=p['completed_minutes'],review_minutes=p.get('review_minutes',60),
                     assessment_status='待网页AI复习',
                     instruction='仅对completed中的完整文章在网页逐题提问。勾选只代表已读，不代表掌握；未收到回答不要评分。')
@@ -215,7 +223,7 @@ class Store:
         p=self._load(day)
         lines=[f'# {day} 学习台待办\n',f'阅读约{self._load(day)["reading_minutes"]}分钟，复习答题约{self._load(day)["review_minutes"]}分钟。勾选状态以SQLite为准。\n']
         for item in p['items']:
-            a=self.catalog[item['article_id']]
+            a=self.catalog.get(item['article_id']) or self.deleted[item['article_id']]
             lines.append(f'- [{"x" if item.get("done") else " "}] {a["title"]}（{a["topic"]}，约{a["minutes"]}分钟，ID `{a["id"]}`）')
         dest=plans/f'{day}-学习台.md';tmp=dest.with_suffix('.md.tmp');tmp.write_text('\n'.join(lines)+'\n',encoding='utf-8');tmp.replace(dest)
 

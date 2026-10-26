@@ -16,5 +16,9 @@ context.window=context;vm.createContext(context);vm.runInContext(fs.readFileSync
  await vm.runInContext('chooseSubject("Go后端")',context);assert.equal(context.state.source,'原始主专栏','prefer complete original modules');html=element('#library-results').innerHTML;
  assert(html.includes('data-read="base"'));assert(html.indexOf('data-read="base"')<html.indexOf('data-read="map"'));assert(!html.includes('data-read="extra"'));assert(html.includes('已读'));
  element('#source-filter').onchange({target:{value:'补充笔记'}});html=element('#library-results').innerHTML;assert(html.includes('data-read="extra"'));assert(!html.includes('data-read="base"'));
- element('#all-subjects').onclick();assert.equal(context.state.topic,'');assert(element('#page').innerHTML.includes('data-subject="摄影"'));console.log('hierarchical original library navigation passed');
+ element('#all-subjects').onclick();assert.equal(context.state.topic,'');assert(element('#page').innerHTML.includes('data-subject="摄影"'));assert(element('#page').innerHTML.includes('id="manage-materials"'),'library offers selection management');
+ element('#manage-materials').onclick();assert(element('#page').innerHTML.includes('data-book='),'manage mode offers whole source selection');
+ await vm.runInContext('chooseSubject("Go后端")',context);assert(element('#library-results').innerHTML.includes('data-material="base"'),'manage mode offers per-module selection');
+ element('#cancel-manage').onclick();assert(!element('#library-results').innerHTML.includes('data-material='),'cancel returns to reading');
+ console.log('hierarchical library and deletion selection passed');
 })().catch(e=>{console.error(e);process.exit(1)});

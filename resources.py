@@ -204,9 +204,58 @@ class ResourceLibrary:
     def __init__(self,root,catalog_list,store,model):
         self.root=Path(root).resolve();self.catalog=catalog_list;self.store=store;self.model=model
         self.data=self.root/'学习台/data';self.data.mkdir(parents=True,exist_ok=True)
+        self.catalog[:]=[a for a in self.catalog if a['id'] in store.catalog]
         self.preview_cache={};self.preview_lock=threading.RLock()
         self.imports=self.root/'学习台/imports';self.imports.mkdir(parents=True,exist_ok=True)
         if not self.imports.resolve().is_relative_to(self.root) or not self.data.resolve().is_relative_to(self.root):raise ValueError('资料目录必须位于数据目录内')
+    def delete(self,ids):
+        """Remove live resources; retain metadata and existing learning facts only."""
+        if not isinstance(ids,list) or not ids or len(ids)>10000 or any(not isinstance(x,str) for x in ids):
+            raise ValueError('请选择需要删除的资料')
+        with self.store.lock:
+            selected=set(ids)
+            if any(x not in self.store.catalog or self.store.catalog[x].get('is_demo') for x in selected):
+                raise ValueError('部分资料不存在或不可删除，请刷新目录')
+            # Original modules own their legacy question fragments. Full-document parents
+            # disappear only when their last live module has also been selected.
+            while True:
+                before=len(selected)
+                selected.update(a['id'] for a in self.catalog if a.get('parent_unit') in selected)
+                parents={a.get('document_id') for a in self.catalog if a['id'] in selected and a.get('document_id')}
+                for parent in parents:
+                    if not any(a.get('document_id')==parent and a['id'] not in selected for a in self.catalog):
+                        if parent in self.store.catalog:selected.add(parent)
+                if len(selected)==before:break
+            removed=[a for a in self.catalog if a['id'] in selected]
+            combined=[a for a in self.catalog if a['id'] not in selected]
+            fd,tmp=tempfile.mkstemp(dir=self.data,prefix='.catalog-',suffix='.json')
+            try:
+                with os.fdopen(fd,'w',encoding='utf-8') as f:
+                    json.dump(combined,f,ensure_ascii=False,indent=2);f.flush();os.fsync(f.fileno())
+                with self.store.connect() as c:
+                    for a in removed:
+                        c.execute('INSERT OR REPLACE INTO deleted_resources VALUES (?,?)',(a['id'],json.dumps(a,ensure_ascii=False)))
+                    os.replace(tmp,self.data/'catalog.json')
+            finally:
+                if os.path.exists(tmp):os.unlink(tmp)
+            self.store.deleted.update({a['id']:a for a in removed})
+            self.catalog[:]=combined;self.store.catalog={a['id']:a for a in combined}
+            # Only material files inside managed directories; never delete a shared file,
+            # user-selected original outside the data root, or configuration/database.
+            protected={str((self.root/a[k]).resolve()) for a in combined for k in ['path','original_path'] if a.get(k)}
+            warnings=[]
+            bases=[self.root/'资料源',self.imports]+[self.data/x for x in ['正文分节','原文模块','完整文章','完整专栏']]
+            for a in removed:
+                for key in ['path','original_path']:
+                    if not a.get(key):continue
+                    path=self.root/a[key];resolved=path.resolve()
+                    if not resolved.is_relative_to(self.root) or str(resolved) in protected or not any(resolved.is_relative_to(b.resolve()) for b in bases):continue
+                    try:
+                        if path.is_file() or path.is_symlink():path.unlink()
+                        if path.parent.parent==self.imports and not any(path.parent.iterdir()):path.parent.rmdir()
+                    except OSError:warnings.append('资料文件未能移除：'+a['title'])
+            return dict(deleted_ids=sorted(selected),warnings=list(dict.fromkeys(warnings)))
+
     def _save(self,prepared,topic,source,source_url=''):
         topic=str(topic or '通用学习').strip()[:100] or '通用学习'
         rows=[];created=[]

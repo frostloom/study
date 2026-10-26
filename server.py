@@ -128,6 +128,9 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                     if not eligible(value):raise ValueError('请先选择或导入至少一份真实学习资料')
                     profile.save({},completed=True);return self.send_json(setup_payload())
                 if route=='/api/model/test':return self.send_json(client.test_connection())
+                if route=='/api/resources/delete':
+                    with learning.lock:
+                        return self.send_json(resources.delete(p.get('article_ids')))
                 if route=='/api/resources/import-files':return self.send_json({'articles':resources.import_files(p.get('files'),p.get('topic','我的资料'))})
                 if route=='/api/resources/preview':return self.send_json(resources.preview_url(p.get('url','')))
                 if route=='/api/resources/import-url':return self.send_json({'articles':[resources.import_url(p.get('url',''),p.get('topic','网络资料'))]})

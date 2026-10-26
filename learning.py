@@ -169,7 +169,7 @@ class Learning:
                 if q['answer']==answer:return self.public_review(day)
                 raise ValueError('该题已批改，历史回答保留，不覆盖；可在AI对话中继续追问')
             q['answer']=answer;self.store.save_review(day,r)
-            context=[dict(title=self.store.catalog[a]['title'],text=plain(self.text(a))[:7000]) for a in q['article_ids']]
+            context=[dict(title=self.store.catalog[a]['title'],text=plain(self.text(a))[:7000]) for a in q['article_ids'] if a in self.store.catalog]
             prompt=f'''你是中文学习复习老师。按用户真实回答评分：0错误或无关，1只有术语，2主线正确但边界不足，3能清楚解释并处理场景。不要仅因表述不同判错，不编造经历。
 给出具体feedback、一个follow_up追问和简短reference_answer。原文可能过时，需说明版本边界。只评下面这一次真实回答，不假装用户已回答追问。
 题目：{q['question']}
