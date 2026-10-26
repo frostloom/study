@@ -12,8 +12,10 @@ function bindInput(input,{send,clear}){
 async function rasterizeImage(item){
  const img=new Image();await new Promise((resolve,reject)=>{const timer=setTimeout(()=>{img.src='';reject(new Error('图片解码超时，请重试或选择仅文字'));},15000);img.onload=()=>{clearTimeout(timer);resolve();};img.onerror=()=>{clearTimeout(timer);reject(new Error('当前小节有图片未能解码，请重试或选择仅文字'));};img.src=item.data_url;});
  if(!img.naturalWidth||!img.naturalHeight)throw new Error('图片没有有效尺寸');
- const svg=item.data_url.startsWith('data:image/svg+xml'),scale=Math.min(svg?2:1,2048/img.naturalWidth,2048/img.naturalHeight);
- const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(img.naturalWidth*scale));canvas.height=Math.max(1,Math.round(img.naturalHeight*scale));
+ const svg=item.data_url.startsWith('data:image/svg+xml');let width=img.naturalWidth,height=img.naturalHeight;
+ if(svg){try{const xml=new TextDecoder().decode(Uint8Array.from(atob(item.data_url.split(',')[1]),c=>c.charCodeAt(0))),root=new DOMParser().parseFromString(xml,'image/svg+xml').documentElement,view=(root.getAttribute('viewBox')||'').trim().split(/[ ,]+/).map(Number);if(view.length===4&&Number.isFinite(view[2])&&Number.isFinite(view[3])&&view[2]>0&&view[3]>0){width=view[2];height=view[3];}}catch{}}
+ const scale=Math.min(svg?2:1,2048/width,2048/height);
+ const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(width*scale));canvas.height=Math.max(1,Math.round(height*scale));
  const ctx=canvas.getContext('2d');ctx.fillStyle='#fff';ctx.fillRect(0,0,canvas.width,canvas.height);ctx.drawImage(img,0,0,canvas.width,canvas.height);
  let data=canvas.toDataURL('image/png');if(data.length>1572864)data=canvas.toDataURL('image/jpeg',.8);if(data.length>1572864)data=canvas.toDataURL('image/jpeg',.6);
  if(data.length>1572864)throw new Error('图片过大，请选更细的小节或选择仅文字');

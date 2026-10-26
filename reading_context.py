@@ -1,5 +1,5 @@
 """Bounded section context and complete recent question/answer pairs."""
-import json,re
+import json,re,base64
 from html import unescape
 from html.parser import HTMLParser
 
@@ -52,14 +52,31 @@ def markdown_references(raw):
  return refs
 
 def section_images(raw,fmt,references=None):
- result=[]
- class Images(HTMLParser):
-  def handle_starttag(self,tag,attrs):
-   if tag.lower()=='img':
+ def html_images(html):
+  found=[];offsets=[0]
+  for line in html.splitlines(keepends=True):offsets.append(offsets[-1]+len(line))
+  class Images(HTMLParser):
+   def __init__(self):super().__init__();self.depth=0;self.start=0;self.alt=''
+   def position(self):line,column=self.getpos();return offsets[line-1]+column
+   def handle_starttag(self,tag,attrs):
     a=dict(attrs)
-    if a.get('src'):result.append(dict(src=a['src'],alt=a.get('alt','')))
- if fmt=='html':
-  p=Images();p.feed(raw);return result
+    if tag.lower()=='svg':
+     if self.depth==0:self.start=self.position();self.alt=a.get('aria-label','')
+     self.depth+=1
+    elif tag.lower()=='img' and not self.depth and a.get('src'):found.append((self.position(),dict(src=a['src'],alt=a.get('alt',''))))
+   def handle_endtag(self,tag):
+    if tag.lower()!='svg' or not self.depth:return
+    self.depth-=1
+    if not self.depth:
+     end=html.find('>',self.position())+1;svg=html[self.start:end]
+     if not re.search(r'<svg\b[^>]*\bxmlns\s*=',svg,re.I):svg=re.sub(r'<svg\b','<svg xmlns="http://www.w3.org/2000/svg"',svg,count=1,flags=re.I)
+     alt=self.alt or '当前小节示意图'
+     found.append((self.start,dict(src='data:image/svg+xml;base64,'+base64.b64encode(svg.encode()).decode(),alt=alt)))
+   def handle_startendtag(self,tag,attrs):
+    self.handle_starttag(tag,attrs)
+    if tag.lower()=='svg':self.handle_endtag(tag)
+  p=Images();p.feed(html);return found
+ if fmt=='html':return [x for _,x in html_images(raw)]
  text=markdown_prose(raw);refs=references or markdown_references(raw);found=[];occupied=[]
  for m in re.finditer(r'(?<!\\)!\[([^\]]*)\]\(\s*(?:<([^>]+)>|([^\s)]+))(?:\s+"[^"]*")?\s*\)',text):
   found.append((m.start(),dict(src=m[2] or m[3],alt=m[1])));occupied.append((m.start(),m.end()))
@@ -67,8 +84,7 @@ def section_images(raw,fmt,references=None):
   if any(a<=m.start()<b for a,b in occupied):continue
   key=re.sub(r'\s+',' ',m[2] or m[1]).strip().lower()
   if key in refs:found.append((m.start(),dict(src=refs[key],alt=m[1])))
- for m in re.finditer(r'<img\b[^>]*>',text,re.I|re.S):
-  before=len(result);p=Images();p.feed(m[0]);found.extend((m.start(),x) for x in result[before:])
+ found.extend(html_images(text))
  return [x for _,x in sorted(found,key=lambda x:x[0])]
 
 def current_section(raw,fmt='markdown',quote='',section_index=None):

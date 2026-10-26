@@ -72,3 +72,12 @@ class MarkdownVisionTests(unittest.TestCase):
  def test_inline_code_and_escaped_image_examples_are_not_images(self):
   raw='## A\n`![example](fake.png)`\n\\![escaped](fake2.png)\n![real](real.png)'
   self.assertEqual([x['src'] for x in current_section(raw,'markdown')['images']],['real.png'])
+
+class InlineSVGTests(unittest.TestCase):
+ def test_inline_svg_is_attached_only_for_current_section(self):
+  raw='<h2>A</h2><svg viewBox="0 0 100 50"><text x="5" y="20">Hidden</text></svg><h2>B</h2><p>Target</p><svg viewBox="0 0 800 400" aria-label="Timeline"><text x="5" y="20">A commits</text></svg>'
+  s=current_section(raw,'html','Target')
+  self.assertEqual(len(s['images']),1)
+  encoded=s['images'][0]['src'].split(',',1)[1];svg=base64.b64decode(encoded).decode()
+  self.assertIn('xmlns="http://www.w3.org/2000/svg"',svg);self.assertIn('A commits',svg);self.assertNotIn('Hidden',svg)
+  self.assertEqual(s['images'][0]['alt'],'Timeline')
