@@ -48,3 +48,13 @@ class DesktopMigrationTests(unittest.TestCase):
    Profile(web).save({'goal':'learn photography','daily_minutes':120,'review_minutes':30,'resource_ids':['chosen']})
    migrate_web_settings(web,app,Path(t)/'backup');p=Profile(app).get()
    self.assertEqual(p['goal'],'learn photography');self.assertEqual(p['daily_minutes'],120);self.assertEqual(p['resource_ids'],['chosen'])
+ def test_same_id_changed_material_retains_both_and_reports_catalog_conflict(self):
+  with tempfile.TemporaryDirectory() as t:
+   web=Path(t)/'web';app=Path(t)/'app'
+   for root,title,text in [(web,'new title','web material'),(app,'old title','desktop material')]:
+    row=dict(id='same',title=title,path='资料源/a.md',topic='topic');Store(root,[row]);(root/'资料源').mkdir();(root/'资料源/a.md').write_text(text,encoding='utf-8');(root/'学习台/data/catalog.json').write_text(json.dumps([row]),encoding='utf-8')
+   backup=Path(t)/'backup';r=migrate_web_settings(web,app,backup)
+   self.assertEqual((app/'资料源/a.md').read_text(encoding='utf-8'),'desktop material')
+   material=next(x for x in r['conflicts'] if x['table']=='material')
+   self.assertEqual((backup/material['web_copy']).read_text(encoding='utf-8'),'web material')
+   self.assertTrue(any(x['table']=='catalog' for x in r['conflicts']))

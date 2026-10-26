@@ -1,7 +1,7 @@
 """Explicit local migration; never runs in preview or uploads personal state."""
 from contextlib import closing
 from pathlib import Path
-import json,os,shutil,sqlite3,uuid
+import json,os,shutil,sqlite3,uuid,hashlib
 from profile_settings import Profile,DEFAULTS
 
 def validate_browser_state(items):
@@ -33,9 +33,20 @@ def migrate_web_settings(web_root,app_root,backup_root):
  report=dict(backup=str(backup),added_records=0,added_materials=0,conflicts=[])
  original=json.loads((wd/'catalog.json').read_text(encoding='utf-8'));current=json.loads((ad/'catalog.json').read_text(encoding='utf-8')) if (ad/'catalog.json').exists() else []
  ids={x['id'] for x in current}
+ by_id={x['id']:x for x in current}
  for row in original:
   source=(web/row['path']).resolve();dest=(app/row['path']).resolve()
   if not source.is_relative_to(web) or not dest.is_relative_to(app) or not source.is_file():raise ValueError('原资料缺失或路径不安全')
+  if row['id'] in ids:
+   old=by_id[row['id']];existing=(app/old['path']).resolve()
+   if not existing.is_relative_to(app):raise ValueError('目标资料路径不安全')
+   if old!=row:report['conflicts'].append(dict(table='catalog',id=row['id'],kept='desktop',web_copy='web/catalog.json'))
+   if not existing.exists():existing.parent.mkdir(parents=True,exist_ok=True);shutil.copy2(source,existing)
+   elif existing.read_bytes()!=source.read_bytes():
+    saved=backup/'web/materials'/(hashlib.sha256(str(row['id']).encode()).hexdigest()[:24]+source.suffix)
+    saved.parent.mkdir(exist_ok=True);shutil.copy2(source,saved);os.chmod(saved,0o600)
+    report['conflicts'].append(dict(table='material',id=row['id'],kept='desktop',web_copy=str(saved.relative_to(backup))))
+   continue
   if row['id'] not in ids:
    dest.parent.mkdir(parents=True,exist_ok=True)
    if dest.exists() and source.read_bytes()!=dest.read_bytes():raise ValueError('目标存在不同内容的同名资料，已保留备份，请先处理冲突')
