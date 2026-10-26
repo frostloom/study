@@ -1,12 +1,31 @@
-/* Browse actual resources first; optional filters never force a subject choice. */
+/* Preserve original-document browsing: categories first, then a source's modules. */
 (function(){
 'use strict';
+const rows=()=>originalDocs().filter(a=>!a.demo&&!a.is_demo&&a.id!=='welcome-demo');
+const topicRows=topic=>rows().filter(a=>(a.topic||'未分类')===topic);
+const sourcesFor=topic=>[...new Set(topicRows(topic).map(a=>a.source||'我的资料'))];
+function preferred(topic){const docs=topicRows(topic);return docs.find(a=>a.original_module)?.source||sourcesFor(topic)[0]||'';}
+function addAction(){return '<button class="secondary" id="release-add-materials">寻找或添加资料</button>';}
+function bindAdd(){$('#release-add-materials').onclick=()=>go('settings').then(()=>document.querySelector('[data-settings-tab="materials"]')?.click());}
+window.chooseSubject=function(topic){state.topic=topic;state.source=preferred(topic);state.query='';state.page=0;return renderLibrary();};
 renderLibrary=async function(){
- const rows=originalDocs().filter(a=>!a.demo&&!a.is_demo&&a.id!=='welcome-demo');
- const topics=[...new Set(rows.map(a=>a.topic))].filter(Boolean);
- $('#page').innerHTML=heading('资料库',esc(state.profile?.goal||''),'<button class="secondary" id="release-add-materials">寻找或添加资料</button>')+`<div class="document-toolbar"><label class="document-search"><span class="sr-only">搜索资料</span><input id="release-library-search" type="search" placeholder="搜索标题或内容分类" value="${esc(state.query)}"></label><label>分类<select id="release-library-category"><option value="">全部资料</option>${topics.map(t=>`<option value="${esc(t)}" ${state.topic===t?'selected':''}>${esc(t)}</option>`).join('')}</select></label></div><div id="release-library-results"></div>`;
- function paint(){const query=(state.query||'').trim().toLowerCase();const all=rows.filter(a=>(!state.topic||state.topic===a.topic)&&(!query||(a.title+' '+a.topic+' '+a.source).toLowerCase().includes(query)));const pages=Math.max(1,Math.ceil(all.length/30));state.page=Math.min(Math.max(state.page||0,0),pages-1);const page=all.slice(state.page*30,state.page*30+30);const read=new Set(state.status?.read_ids||[]);$('#release-library-results').innerHTML=`<div class="filter-note"><span>${all.length} 份资料</span></div><div class="original-contents">${page.map(a=>`<div class="contents-row"><div><button class="article-button" data-read="${esc(a.id)}">${esc(a.title)}</button><div class="todo-meta">${esc(a.topic||'学习资料')}${a.source?' · '+esc(sourceLabel(a.source)):''}${read.has(a.id)?' · 已读':''}</div></div><span class="todo-time">约 ${a.minutes||1} 分钟</span></div>`).join('')||'<div class="release-empty"><h2>还没有资料</h2><p>根据你的学习目标寻找资料，预览后选择想读的内容。也可以导入自己的文件或网页。</p></div>'}</div>${pages>1?`<div class="pagination"><button class="secondary" id="release-library-prev" ${state.page===0?'disabled':''}>上一页</button><span>${state.page+1} / ${pages}</span><button class="secondary" id="release-library-next" ${state.page+1>=pages?'disabled':''}>下一页</button></div>`:''}`;$('#release-library-prev')?.addEventListener('click',()=>{state.page--;paint();});$('#release-library-next')?.addEventListener('click',()=>{state.page++;paint();});}
- $('#release-library-search').oninput=e=>{state.query=e.target.value;state.page=0;paint();};$('#release-library-category').onchange=e=>{state.topic=e.target.value;state.page=0;paint();};
- $('#release-add-materials').onclick=()=>{go('settings').then(()=>document.querySelector('[data-settings-tab="materials"]')?.click());};paint();
+ const topics=[...new Set(rows().map(a=>a.topic||'未分类'))];
+ if(state.topic&&!topics.includes(state.topic)){state.topic='';state.source='';}
+ if(!state.topic){
+  $('#page').innerHTML=heading('资料库','',addAction())+`<div class="subject-index"><section class="subject-section"><div class="subject-grid">${topics.map(t=>`<button class="subject-choice" data-subject="${esc(t)}"><strong>${esc(t)}</strong><small>${esc(sourceLabel(preferred(t)))}</small><span aria-hidden="true">›</span></button>`).join('')}</div></section>${topics.length?'':'<div class="empty"><h2>还没有资料</h2><p>添加想阅读的资料后，会在这里按分类显示。</p></div>'}</div>`;
+  document.querySelectorAll('[data-subject]').forEach(b=>b.onclick=()=>chooseSubject(b.dataset.subject));bindAdd();return;
+ }
+ const sources=sourcesFor(state.topic);if(!sources.includes(state.source))state.source=preferred(state.topic);
+ $('#page').innerHTML=`<nav class="library-crumb" aria-label="资料目录"><button class="ghost small" id="all-subjects">全部分类</button><span aria-hidden="true">/</span><strong>${esc(state.topic)}</strong></nav>`+heading(esc(state.topic),'',addAction())+`<div class="document-toolbar"><label>资料来源<select id="source-filter">${sources.map(s=>`<option value="${esc(s)}" ${state.source===s?'selected':''}>${esc(sourceLabel(s))}</option>`).join('')}</select></label><label class="document-search"><span class="sr-only">在当前目录搜索</span><input id="library-search" type="search" placeholder="在当前目录搜索" value="${esc(state.query)}"></label></div><div id="library-results"></div>`;
+ $('#all-subjects').onclick=()=>{state.topic='';state.source='';state.query='';state.page=0;renderLibrary();};
+ $('#source-filter').onchange=e=>{state.source=e.target.value;state.query='';state.page=0;renderLibrary();};
+ $('#library-search').oninput=e=>{state.query=e.target.value;state.page=0;paintLibrary();};bindAdd();paintLibrary();
+};
+window.paintLibrary=function(){
+ const query=(state.query||'').trim().toLowerCase();
+ const all=topicRows(state.topic).filter(a=>(a.source||'我的资料')===state.source&&(!query||(a.title+' '+(a.group||'')).toLowerCase().includes(query))).sort((a,b)=>(a.order??999999)-(b.order??999999)||(a.path||'').localeCompare(b.path||''));
+ const count=30,pages=Math.max(1,Math.ceil(all.length/count));state.page=Math.max(0,Math.min(state.page||0,pages-1));const page=all.slice(state.page*count,(state.page+1)*count),read=new Set(state.status?.read_ids||[]);
+ $('#library-results').innerHTML=`<div class="filter-note"><span>${esc(sourceLabel(state.source))}</span><span>${all.length} 个原文${all.some(a=>a.original_module)?'模块':'篇目'}</span></div><div class="original-contents">${page.map((a,i)=>`<div class="contents-row"><span class="contents-order" aria-hidden="true">${state.page*count+i+1}</span><div><button class="article-button" data-read="${esc(a.id)}">${esc(a.title.replace('（完整文章）','').replace('（完整专栏）',''))}</button><div class="todo-meta">${a.original_module?'原文完整模块':'原文完整篇目'}${read.has(a.id)?' · 已读':''}</div></div><span class="todo-time">约 ${a.minutes||1} 分钟</span></div>`).join('')||'<div class="empty"><h2>没有匹配的篇目</h2><p>试试其他关键词，或切换资料来源。</p></div>'}</div>${pages>1?`<div class="pagination"><button class="secondary small" id="lib-prev" ${state.page===0?'disabled':''}>上一页</button><span>${state.page+1} / ${pages}</span><button class="secondary small" id="lib-next" ${state.page+1>=pages?'disabled':''}>下一页</button></div>`:''}`;
+ $('#lib-prev')?.addEventListener('click',()=>{state.page--;paintLibrary();});$('#lib-next')?.addEventListener('click',()=>{state.page++;paintLibrary();});
 };
 })();
