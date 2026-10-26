@@ -4,6 +4,7 @@ $env:PYTHONUTF8='1'
 if($LASTEXITCODE -ne 0){throw 'Frozen backend smoke failed'}
 & python -c "from process_limits import windows_pdf_limits; windows_pdf_limits(); bytearray(700*1024*1024)"
 if($LASTEXITCODE -eq 0){throw 'PDF worker Windows memory ceiling not enforced'}
+$global:LASTEXITCODE=0
 $Root=Join-Path $env:RUNNER_TEMP 'study-native-smoke'
 $App=Start-Process -FilePath "$PWD/release-build/windows-stage/DailyStudy.exe" -ArgumentList '--data-dir',"`"$Root`"" -PassThru
 try {

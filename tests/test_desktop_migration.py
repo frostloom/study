@@ -26,3 +26,25 @@ class DesktopMigrationTests(unittest.TestCase):
   value=validate_browser_state({'study-theme':'paper','study-draft:2026-10-26:q1':'my draft','unrelated-token':'secret'})
   self.assertEqual(value,{'study-theme':'paper','study-draft:2026-10-26:q1':'my draft'})
   with self.assertRaises(ValueError):validate_browser_state({'study-ai-draft:article':'x'*200001})
+ def test_existing_desktop_preferences_preserved_and_newer_web_check_reported(self):
+  from profile_settings import Profile
+  with tempfile.TemporaryDirectory() as t:
+   web=Path(t)/'web';app=Path(t)/'app'
+   for root in [web,app]:
+    Store(root,[]);(root/'学习台/data/catalog.json').write_text('[]',encoding='utf-8')
+   Profile(app).save({'goal':'desktop goal','auto_plan':False,'plan_time':'11:00'})
+   Profile(web).save({'goal':'web goal','auto_plan':True,'plan_time':'09:00'})
+   for root,done,when in [(web,1,'2026-10-26'),(app,0,'2026-10-25')]:
+    with closing(sqlite3.connect(root/'学习台/data/study.sqlite3')) as db,db:db.execute('INSERT INTO checks VALUES (?,?,?,?)',('2026-10-26','a',done,when))
+   r=migrate_web_settings(web,app,Path(t)/'backup');p=Profile(app).get()
+   self.assertEqual(p['goal'],'desktop goal');self.assertFalse(p['auto_plan']);self.assertEqual(p['plan_time'],'11:00')
+   self.assertTrue(any(x['table']=='checks' for x in r['conflicts']))
+   self.assertTrue(any(x['table']=='profile' and x['field']=='goal' for x in r['conflicts']))
+ def test_fresh_desktop_imports_web_goal_budget_and_choices(self):
+  from profile_settings import Profile
+  with tempfile.TemporaryDirectory() as t:
+   web=Path(t)/'web';app=Path(t)/'app'
+   Store(web,[]);(web/'学习台/data/catalog.json').write_text('[]',encoding='utf-8')
+   Profile(web).save({'goal':'learn photography','daily_minutes':120,'review_minutes':30,'resource_ids':['chosen']})
+   migrate_web_settings(web,app,Path(t)/'backup');p=Profile(app).get()
+   self.assertEqual(p['goal'],'learn photography');self.assertEqual(p['daily_minutes'],120);self.assertEqual(p['resource_ids'],['chosen'])
