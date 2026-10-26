@@ -134,7 +134,7 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                 if route=='/api/resources/discover':
                     if not client.public_settings().get('ready'):raise ValueError('请先验证模型连接')
                     prefs=profile.get();given=p.get('preferences',{});prefs.update({k:given[k] for k in ['goal','topics','level','pace'] if k in given})
-                    return self.send_json(jobs.submit(lambda:resources.discover(prefs,p.get('query',''))))
+                    return self.send_json(jobs.submit(lambda:resources.discover(prefs,p.get('query',''),scope=p.get('scope','onboarding'))))
                 if route=='/api/jobs/cancel':return self.send_json(jobs.cancel(p.get('id','')))
                 if route=='/api/tour':return self.send_json(profile.save({'tour_step':p.get('step',0),'tour_completed':bool(p.get('completed',False))}))
                 if route=='/api/data/backup':return self.send_json(backup_data())

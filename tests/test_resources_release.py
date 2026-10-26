@@ -123,12 +123,13 @@ class FetchBoundaryTests(unittest.TestCase):
             with self.assertRaises(ValueError):fetch_public('https://example.com/',max_bytes=30)
     def test_body_uses_single_socket_reads_to_enforce_elapsed_deadline(self):
         from safe_web import fetch_public
+        now=[0]
         class Reply:
             status=200
             def getheader(self,name,default=None):return default
             def read(self,n):raise AssertionError('Buffered read may wait indefinitely for a slow dripping response')
-            def read1(self,n):return b'one chunk'
-        with patch('safe_web.time.monotonic',side_effect=[0,0,0,0,20]),patch('safe_web.validate_url',return_value=('https','example.com',443,'/',['93.184.216.34'])),patch('safe_web._request',return_value=(Reply(),lambda:None)):
+            def read1(self,n):now[0]=20;return b'one chunk'
+        with patch('safe_web.time.monotonic',side_effect=lambda:now[0]),patch('safe_web.validate_url',return_value=('https','example.com',443,'/',['93.184.216.34'])),patch('safe_web._request',return_value=(Reply(),lambda:None)):
             with self.assertRaisesRegex(ValueError,'超时'):fetch_public('https://example.com/',timeout=12)
     def test_actual_dripping_headers_cannot_extend_request_deadline(self):
         import socket
@@ -148,7 +149,7 @@ class FetchBoundaryTests(unittest.TestCase):
         worker=threading.Thread(target=drip,daemon=True);worker.start()
         started=time.monotonic()
         try:
-            with patch('safe_web.validate_url',return_value=('http','public.example',80,'/',['93.184.216.34'])),patch('safe_web.socket.create_connection',return_value=client):
+            with patch('safe_web.validate_url',return_value=('http','public.example',80,'/',['93.184.216.34'])),patch('safe_web._system_proxy',return_value=None),patch('safe_web.socket.create_connection',return_value=client):
                 with self.assertRaises(ValueError):fetch_public('http://public.example/',timeout=0.15)
             self.assertLess(time.monotonic()-started,0.7,'Byte progress must not reset the whole request deadline')
         finally:
@@ -165,7 +166,7 @@ class FetchBoundaryTests(unittest.TestCase):
             finally:server.close()
         worker=threading.Thread(target=truncated,daemon=True);worker.start()
         try:
-            with patch('safe_web.validate_url',return_value=('http','public.example',80,'/',['93.184.216.34'])),patch('safe_web.socket.create_connection',return_value=client):
+            with patch('safe_web.validate_url',return_value=('http','public.example',80,'/',['93.184.216.34'])),patch('safe_web._system_proxy',return_value=None),patch('safe_web.socket.create_connection',return_value=client):
                 with self.assertRaisesRegex(ValueError,'完整|中断'):fetch_public('http://public.example/',timeout=1)
         finally:client.close();worker.join(timeout=1)
 
@@ -265,3 +266,101 @@ class SemanticHTMLTests(unittest.TestCase):
         self.assertIn('Opening body',text)
         self.assertIn('All details retained',text)
         for noise in ['Top site links','Ads','Newsletter signup','Next pages','Contact links']:self.assertNotIn(noise,text)
+
+class AdditionScopeTests(ResourceTests):
+    def test_addition_search_never_includes_initial_goal_or_keywords(self):
+        prompts=[]
+        class Model:
+            def generate(self,prompt,schema):
+                prompts.append(prompt)
+                return {'queries':['photography composition tutorial']} if 'queries' in schema['properties'] else {'rankings':[{'id':'s1','reason':'Requested photography lesson','level':'beginner'}]}
+        self.lib.model=Model()
+        with patch('resources.validate_url',return_value=('https','example.com',443,'/photo',['93.184.216.34'])),patch('resources.search_public',return_value=[{'title':'Photography','url':'https://example.com/photo','snippet':'composition'}]):
+            self.lib.discover({'goal':'OLD_GO_INTERVIEW_GOAL','topics':['OLD_DATABASE_TOPIC'],'level':'advanced','pace':'quick'},'学习摄影构图',scope='addition')
+        self.assertTrue(all('学习摄影构图' in x for x in prompts))
+        self.assertTrue(all('OLD_GO_INTERVIEW_GOAL' not in x and 'OLD_DATABASE_TOPIC' not in x for x in prompts))
+    def test_addition_requires_current_query_before_model_calls(self):
+        class Model:
+            def generate(self,*args):raise AssertionError('Model must not run without a new query')
+        self.lib.model=Model()
+        with self.assertRaisesRegex(ValueError,'输入'):self.lib.discover({'goal':'Old goal'},'',scope='addition')
+    def test_preview_then_import_uses_same_complete_document_once(self):
+        content=b'<title>Read first</title><main><h1>Lesson</h1><p>Complete actual text.</p></main>'
+        with patch('resources.fetch_public',side_effect=[{'url':'https://example.com/lesson','data':content,'content_type':'text/html'},ValueError('second request should not occur')]) as fetch:
+            preview=self.lib.preview_url('https://example.com/start')
+            row=self.lib.import_url('https://example.com/start','Photography')
+        self.assertEqual(fetch.call_count,1)
+        self.assertIn('Complete actual text.',preview['text'])
+        self.assertIn('Complete actual text.',(self.root/row['path']).read_text(encoding='utf-8'))
+
+class FetchRetryTests(unittest.TestCase):
+    def test_transient_connection_failure_is_retried_and_success_returned(self):
+        from safe_web import fetch_public,FetchError
+        class Reply:
+            status=200
+            def __init__(self):self.body=b'Complete lesson'
+            def getheader(self,n,default=None):return default
+            def read1(self,n):value=self.body[:n];self.body=self.body[n:];return value
+            read=read1
+        with patch('safe_web.validate_url',return_value=('https','example.com',443,'/',['93.184.216.34'])),patch('safe_web._request',side_effect=[FetchError('temporary failure'),(Reply(),lambda:None)]):
+            self.assertEqual(fetch_public('https://example.com')['data'],b'Complete lesson')
+    def test_approved_second_ip_used_when_first_connection_fails(self):
+        import socket,threading
+        from safe_web import _request
+        client,server=socket.socketpair()
+        def reply():
+            try:server.recv(8192);server.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+            finally:server.close()
+        worker=threading.Thread(target=reply,daemon=True);worker.start()
+        with patch('safe_web._system_proxy',return_value=None),patch('safe_web.socket.create_connection',side_effect=[OSError('route unavailable'),client]) as connect:
+            r,close=_request(('http','example.com',80,'/',['93.184.216.34','93.184.216.35']),1)
+            try:self.assertEqual(r.read(),b'ok')
+            finally:close()
+            self.assertEqual(connect.call_args_list[-1].args[0],('93.184.216.35',80))
+        worker.join(timeout=1)
+
+class GitHubDocumentTests(ResourceTests):
+    def test_github_repository_previews_readme_from_official_api(self):
+        payload={'encoding':'base64','name':'README.md','content':base64.b64encode(b'# Go learning\n\nActual README lesson.').decode()}
+        with patch('resources.validate_url',return_value=('https','github.com',443,'/golang/go',['140.82.112.3'])),patch('resources.fetch_public',return_value={'url':'https://api.github.com/repos/golang/go/readme','data':json.dumps(payload).encode(),'content_type':'application/json'}) as fetch:
+            r=self.lib.preview_url('https://github.com/golang/go')
+        self.assertEqual(fetch.call_args.args[0],'https://api.github.com/repos/golang/go/readme')
+        self.assertEqual(r['url'],'https://github.com/golang/go');self.assertIn('Actual README lesson.',r['text']);self.assertEqual(len(self.rows),1)
+
+class ProxyFetchTests(unittest.TestCase):
+    def test_system_proxy_connect_tunnels_only_prevalidated_public_ip(self):
+        import socket,threading
+        from safe_web import _request
+        client,proxy=socket.socketpair();requests=[]
+        def serve():
+            try:
+                data=b''
+                while b'\r\n\r\n' not in data:
+                    chunk=proxy.recv(4096)
+                    if not chunk:return
+                    data+=chunk
+                requests.append(data);proxy.sendall(b'HTTP/1.1 200 Connection established\r\n\r\n')
+                data=b''
+                while b'\r\n\r\n' not in data:
+                    chunk=proxy.recv(4096)
+                    if not chunk:return
+                    data+=chunk
+                requests.append(data);proxy.sendall(b'HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok')
+            except OSError:pass
+            finally:proxy.close()
+        worker=threading.Thread(target=serve,daemon=True);worker.start()
+        try:
+            with patch('safe_web._system_proxy',return_value=('127.0.0.1',7892,{})),patch('safe_web.socket.create_connection',return_value=client) as connect:
+                r,close=_request(('http','public.example',80,'/article',['93.184.216.34']),1)
+                try:self.assertEqual(r.read(),b'ok')
+                finally:close()
+                self.assertEqual(connect.call_args.args[0],('127.0.0.1',7892))
+            self.assertIn(b'CONNECT 93.184.216.34:80 HTTP/1.1',requests[0]);self.assertIn(b'Host: public.example',requests[1])
+        finally:client.close();worker.join(timeout=1)
+
+class UnicodePublicURLTests(unittest.TestCase):
+    def test_unicode_document_path_is_encoded_before_http_request(self):
+        from safe_web import validate_url
+        dns=[(2,1,6,'',('93.184.216.34',443))]
+        with patch('safe_web.socket.getaddrinfo',return_value=dns):parts=validate_url('https://example.com/中文文档?q=接口')
+        self.assertEqual(parts[3],'/%E4%B8%AD%E6%96%87%E6%96%87%E6%A1%A3?q=%E6%8E%A5%E5%8F%A3')

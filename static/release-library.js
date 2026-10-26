@@ -6,7 +6,7 @@ const topicRows=topic=>rows().filter(a=>(a.topic||'未分类')===topic);
 const sourcesFor=topic=>[...new Set(topicRows(topic).map(a=>a.source||'我的资料'))];
 function preferred(topic){const docs=topicRows(topic),sources=sourcesFor(topic);return (sources.includes('小林图解完整专栏')?'小林图解完整专栏':docs.find(a=>a.original_module)?.source)||sources[0]||'';}
 function addAction(){return '<button class="secondary" id="release-add-materials">寻找或添加资料</button>';}
-function bindAdd(){$('#release-add-materials').onclick=()=>go('settings').then(()=>document.querySelector('[data-settings-tab="materials"]')?.click());}
+function bindAdd(){$('#release-add-materials').onclick=()=>window.ReleaseUI.renderAddition();}
 window.chooseSubject=function(topic){state.topic=topic;state.source=preferred(topic);state.query='';state.page=0;return renderLibrary();};
 renderLibrary=async function(){
  const topics=[...new Set(rows().map(a=>a.topic||'未分类'))];

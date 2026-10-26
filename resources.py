@@ -11,10 +11,12 @@ import subprocess
 import sys
 import pdf_worker
 import uuid
+import time
+import threading
 import zipfile
 import xml.etree.ElementTree as ET
 from html.parser import HTMLParser
-from urllib.parse import quote, urlsplit, parse_qs
+from urllib.parse import quote, urlsplit, parse_qs,unquote
 from catalog import estimate, markdown_title
 from safe_web import fetch_public, validate_url
 
@@ -174,10 +176,35 @@ def search_public(query):
     raise ValueError('公共搜索暂不可用，请稍后重试或直接导入网址。'+'；'.join(errors)[:200])
 
 
+def github_document(url):
+    parsed=urlsplit(url)
+    if parsed.hostname!='github.com':return None
+    pieces=[unquote(x) for x in parsed.path.strip('/').split('/')]
+    if len(pieces)<2 or not all(re.fullmatch(r'[A-Za-z0-9_.-]+',x) and x not in ['.','..'] for x in pieces[:2]):return None
+    owner,repo=pieces[:2];repo=repo.removesuffix('.git')
+    if len(pieces)==2:endpoint=f'https://api.github.com/repos/{owner}/{repo}/readme'
+    elif len(pieces)>=5 and pieces[2]=='blob':
+        if any(x in ['.','..'] for x in pieces[3:]):raise ValueError('GitHub 资料路径无效')
+        endpoint=f'https://api.github.com/repos/{owner}/{repo}/contents/'+quote('/'.join(pieces[4:]),safe='/')+'?ref='+quote(pieces[3],safe='')
+    else:return None
+    validate_url(url)
+    response=fetch_public(endpoint,max_bytes=2*1024*1024)
+    try:
+        obj=json.loads(response['data']);encoded=obj.get('content','')
+        if obj.get('encoding')!='base64' or not isinstance(encoded,str):raise ValueError()
+        content=base64.b64decode(''.join(encoded.splitlines()),validate=True)
+        if not content or len(content)>MAX_FILE:raise ValueError()
+        name=Path(str(obj.get('name') or 'README.md')).name
+        if Path(name).suffix.lower() not in SUPPORTED:name+='.txt'
+    except (ValueError,TypeError,AttributeError,binascii.Error):raise ValueError('GitHub 接口未返回可读取的文档正文') from None
+    return {'url':url,'data':content,'content_type':'text/plain'},name
+
+
 class ResourceLibrary:
     def __init__(self,root,catalog_list,store,model):
         self.root=Path(root).resolve();self.catalog=catalog_list;self.store=store;self.model=model
         self.data=self.root/'学习台/data';self.data.mkdir(parents=True,exist_ok=True)
+        self.preview_cache={};self.preview_lock=threading.RLock()
         self.imports=self.root/'学习台/imports';self.imports.mkdir(parents=True,exist_ok=True)
         if not self.imports.resolve().is_relative_to(self.root) or not self.data.resolve().is_relative_to(self.root):raise ValueError('资料目录必须位于数据目录内')
     def _save(self,prepared,topic,source,source_url=''):
@@ -221,25 +248,42 @@ class ResourceLibrary:
             title,text=extract_document(name,data);prepared.append((name,data,title,text))
         return self._save(prepared,topic,'我的资料')
     def _read_url(self,url):
-        reply=fetch_public(url)
-        content_type=reply['content_type'].lower()
-        suffix=Path(urlsplit(reply['url']).path).suffix.lower()
-        if 'pdf' in content_type:suffix='.pdf'
-        elif 'html' in content_type:suffix='.html'
-        elif 'text/plain' in content_type:suffix=suffix if suffix in ('.md','.txt') else '.txt'
-        elif suffix not in SUPPORTED:raise ValueError('网址未返回支持的文章格式')
-        name='网络文章'+suffix
+        if not isinstance(url,str) or len(url)>4096:raise ValueError('网址格式无效')
+        with self.preview_lock:
+            cached=self.preview_cache.get(url)
+            if cached and time.monotonic()-cached[0]<600:return cached[1]
+        github=github_document(url)
+        if github:reply,name=github
+        else:
+            reply=fetch_public(url)
+            content_type=reply['content_type'].lower()
+            suffix=Path(urlsplit(reply['url']).path).suffix.lower()
+            if 'pdf' in content_type:suffix='.pdf'
+            elif 'html' in content_type:suffix='.html'
+            elif 'text/plain' in content_type:suffix=suffix if suffix in ('.md','.txt') else '.txt'
+            elif suffix not in SUPPORTED:raise ValueError('网址未返回支持的文章格式')
+            name='网络文章'+suffix
         title,text=extract_document(name,reply['data'])
-        return reply,name,title,text
+        prepared=(reply,name,title,text)
+        with self.preview_lock:
+            if len(self.preview_cache)>=4:self.preview_cache.pop(next(iter(self.preview_cache)))
+            self.preview_cache[url]=(time.monotonic(),prepared)
+        return prepared
     def preview_url(self,url):
         reply,name,title,text=self._read_url(url)
         return {'title':title,'url':reply['url'],'text':text[:16000],'truncated':len(text)>16000}
     def import_url(self,url,topic):
         reply,name,title,text=self._read_url(url)
         return self._save([(name,reply['data'],title,text)],topic,'网络资料',reply['url'])[0]
-    def discover(self,preferences,query=''):
+    def discover(self,preferences,query='',scope='onboarding'):
         if self.model is None:raise ValueError('请先配置并验证模型')
-        profile={k:preferences.get(k) for k in ('goal','topics','level','pace')}
+        if scope not in ['onboarding','addition']:raise ValueError('资料查找方式无效')
+        if not isinstance(query,str):raise ValueError('请输入这次想找的资料')
+        query=query.strip()[:1000]
+        if scope=='addition':
+            if not query:raise ValueError('请输入这次想找的资料')
+            profile=dict(goal=query,topics=[],level='intermediate',pace='balanced')
+        else:profile={k:preferences.get(k) for k in ('goal','topics','level','pace')}
         schema={'type':'object','properties':{'queries':{'type':'array','items':{'type':'string'},'maxItems':3}},'required':['queries']}
         prompt='为学习者生成 1 到 3 个公共网页搜索关键词。只生成关键词，不生成链接。\n'+json.dumps(profile,ensure_ascii=False)+'\n补充需求：'+str(query)[:500]
         result=self.model.generate(prompt,schema)

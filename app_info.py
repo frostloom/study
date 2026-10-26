@@ -2,7 +2,7 @@
 from pathlib import Path
 import os,platform,sys
 
-VERSION='1.1.4'
+VERSION='1.2.0'
 REPOSITORY='frostloom/study'
 
 def default_data_root(channel='stable',system=None,home=None):
