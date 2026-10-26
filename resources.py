@@ -208,6 +208,7 @@ class ResourceLibrary:
         self.preview_cache={};self.preview_lock=threading.RLock()
         self.imports=self.root/'学习台/imports';self.imports.mkdir(parents=True,exist_ok=True)
         if not self.imports.resolve().is_relative_to(self.root) or not self.data.resolve().is_relative_to(self.root):raise ValueError('资料目录必须位于数据目录内')
+        self.cleanup_deleted_files(list(store.deleted.values()))
     def delete(self,ids):
         """Remove live resources; retain metadata and existing learning facts only."""
         if not isinstance(ids,list) or not ids or len(ids)>10000 or any(not isinstance(x,str) for x in ids):
@@ -240,21 +241,42 @@ class ResourceLibrary:
                 if os.path.exists(tmp):os.unlink(tmp)
             self.store.deleted.update({a['id']:a for a in removed})
             self.catalog[:]=combined;self.store.catalog={a['id']:a for a in combined}
-            # Only material files inside managed directories; never delete a shared file,
-            # user-selected original outside the data root, or configuration/database.
-            protected={str((self.root/a[k]).resolve()) for a in combined for k in ['path','original_path'] if a.get(k)}
-            warnings=[]
+            warnings=self.cleanup_deleted_files(removed)
+            return dict(deleted_ids=sorted(selected),warnings=warnings)
+
+    def cleanup_deleted_files(self,removed):
+        """Purge unreferenced files and whole inactive source/import folders only."""
+        import shutil
+        with self.store.lock:
+            live=list(self.store.catalog.values())
+            protected={(self.root/a[k]).resolve() for a in live for k in ['path','original_path'] if a.get(k)}
+            sources={a.get('source') for a in live};warnings=[];folders={}
             bases=[self.root/'资料源',self.imports]+[self.data/x for x in ['正文分节','原文模块','完整文章','完整专栏']]
             for a in removed:
                 for key in ['path','original_path']:
                     if not a.get(key):continue
-                    path=self.root/a[key];resolved=path.resolve()
-                    if not resolved.is_relative_to(self.root) or str(resolved) in protected or not any(resolved.is_relative_to(b.resolve()) for b in bases):continue
+                    rel=Path(a[key]);path=self.root/rel;resolved=path.resolve()
+                    if any(parent.is_symlink() for parent in path.parents if parent.is_relative_to(self.root)) or not resolved.is_relative_to(self.root) or resolved in protected or not any(resolved.is_relative_to(b.resolve()) for b in bases):continue
                     try:
                         if path.is_file() or path.is_symlink():path.unlink()
-                        if path.parent.parent==self.imports and not any(path.parent.iterdir()):path.parent.rmdir()
+                        parts=rel.parts
+                        if len(parts)>=3 and parts[0]=='资料源' and a.get('source') not in sources:
+                            folders[self.root/Path(*parts[:2])]=a['title']
+                        if len(parts)>=4 and parts[:2]==('学习台','imports'):
+                            folders[self.root/Path(*parts[:3])]=a['title']
+                        # Clear empty generated chapter directories, up to their managed base.
+                        parent=path.parent
+                        while parent not in bases and parent.is_relative_to(self.root) and parent!=self.root:
+                            if parent.is_symlink() or not parent.is_dir() or any(parent.iterdir()):break
+                            parent.rmdir();parent=parent.parent
                     except OSError:warnings.append('资料文件未能移除：'+a['title'])
-            return dict(deleted_ids=sorted(selected),warnings=list(dict.fromkeys(warnings)))
+            for folder,title in folders.items():
+                resolved=folder.resolve()
+                if folder.is_symlink() or not resolved.is_relative_to(self.root) or any(p.is_relative_to(resolved) for p in protected):continue
+                try:
+                    if folder.is_dir():shutil.rmtree(folder)
+                except OSError:warnings.append('资料附件未能移除：'+title)
+            return list(dict.fromkeys(warnings))
 
     def _save(self,prepared,topic,source,source_url=''):
         topic=str(topic or '通用学习').strip()[:100] or '通用学习'

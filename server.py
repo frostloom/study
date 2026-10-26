@@ -141,8 +141,12 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                 if route=='/api/jobs/cancel':return self.send_json(jobs.cancel(p.get('id','')))
                 if route=='/api/tour':return self.send_json(profile.save({'tour_step':p.get('step',0),'tour_completed':bool(p.get('completed',False))}))
                 if route=='/api/data/backup':return self.send_json(backup_data())
-                if route=='/api/check':return self.send_json(store.toggle(p['date'],p['article_id'],p['done']))
-                if route=='/api/plan/add':return self.send_json(store.add_article(p['date'],p['article_id']))
+                if route=='/api/check':
+                    with learning.lock:return self.send_json(store.toggle(p['date'],p['article_id'],p['done']))
+                if route=='/api/plan/edit':
+                    with learning.lock:return self.send_json(store.edit_day(p['date'],p))
+                if route=='/api/plan/add':
+                    with learning.lock:return self.send_json(store.add_article(p['date'],p['article_id']))
                 if route=='/api/ai/plan':return self.send_json(learning.plan(p.get('date',today())))
                 if route=='/api/ai/ask':return self.send_json(learning.ask(p['article_id'],p['question'],p.get('quote',''),p.get('section_index'),p.get('session_id')))
                 if route=='/api/chat/new':

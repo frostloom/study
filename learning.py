@@ -41,8 +41,9 @@ class Learning:
             prefs=Profile(self.store.root).get();reading,review=self.store.budget()
             done=set(self.store.read_ids())
             history=self.store.history()[:7]
-            previous=[self.store.handoff(h['date']) for h in history if h['date']<day][:3]
+            previous=[self.store.handoff(d) for d in self.store.recent_plan_days(day)]
             pending={a['id'] for h in previous for a in h['pending']}
+            dismissed={x['article_id'] for h in previous for x in (self.store._load(h['date']) or {}).get('removed_items',[])}
             weak=set()
             for h in history:
                 if h['date']>=day:continue
@@ -51,7 +52,7 @@ class Learning:
             candidates=[];counts={}
             # Wide enough coverage for model choice, bounded context with complete article IDs.
             for a in sorted(self.store.catalog.values(),key=lambda x:(0 if x.get('original_module') else 1 if x.get('source')=='小林图解完整专栏' else 3 if x.get('source')=='Go面试宝典' else 2,x.get('order',999999))):
-                if not a.get('learning_unit',True) or a.get('is_demo'):continue
+                if not a.get('learning_unit',True) or a.get('is_demo') or a['id'] in dismissed:continue
                 if (self.store.data/'profile.json').exists() and not prefs['use_existing'] and a['id'] not in prefs['resource_ids']:continue
                 if (a['id'] in done and a['id'] not in weak) or (a.get('optional') and not a.get('learning_unit')):continue
                 counts.setdefault(a['topic'],0)
@@ -155,7 +156,7 @@ class Learning:
                 if not isinstance(q,dict) or any(not isinstance(q.get(k),str) or not q[k].strip() for k in ['question','reference_answer','criteria']):raise ValueError('模型复习题格式无效')
                 if not isinstance(q.get('article_ids'),list) or not q['article_ids'] or any(a not in allowed for a in q['article_ids']):raise ValueError('模型题目超出当天完成范围')
                 q.update(id=uuid.uuid4().hex,answer='',grade=None)
-            self.store.save_review(day,dict(date=day,questions=(old['questions'] if old else [])+qs,status='进行中' if old else '待作答',completed_article_ids=sorted(previous_ids|allowed)))
+            self.store.save_review(day,dict(date=day,questions=(old['questions'] if old else [])+qs,status='进行中' if old else '待作答',completed_article_ids=sorted(previous_ids|{a for q in qs for a in q['article_ids']}),invalidated_article_ids=sorted(set((old or {}).get('invalidated_article_ids',[]))-{a for q in qs for a in q['article_ids']})))
             return self.public_review(day)
 
     def answer_review(self,day,qid,answer):

@@ -47,6 +47,14 @@ class ServerTests(unittest.TestCase):
         self.assertEqual(cm.exception.code,403)
         self.assertEqual(self.request('/api/handoff?date=2026-10-26')['completed'],[])
 
+    def test_manual_day_edit_without_ai_preserves_default_settings(self):
+        self.start()
+        p=self.request('/api/plan/edit',{'date':'2026-10-26','action':'save','tasks':[{'article_id':'whole','minutes':15,'scope':'第二部分'}],'reading_minutes':20,'review_minutes':10},self.base)
+        self.assertEqual(p['planned_minutes'],15);self.assertEqual(p['review_minutes'],10)
+        self.assertEqual(self.httpd.store.budget(),(120,60))
+        p=self.request('/api/plan/edit',{'date':'2026-10-26','action':'remove','article_id':'whole'},self.base)
+        self.assertEqual(p['items'],[]);self.assertEqual(self.request('/api/handoff?date=2026-10-26')['pending'],[])
+
     def test_delete_api_removes_catalog_plan_and_file_with_origin_guard(self):
         self.start();self.httpd.store.generate_plan('2026-10-26')
         with self.assertRaises(urllib.error.HTTPError) as cm:

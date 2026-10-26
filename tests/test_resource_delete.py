@@ -63,3 +63,15 @@ class DeleteTests(unittest.TestCase):
   self.assertEqual(p['completed_minutes'],2)
   archived=next(x for x in p['items'] if x['article_id']==aid)
   self.assertEqual(archived['scope'],'Original section');self.assertTrue(archived['done'])
+
+ def test_whole_source_removes_unindexed_attachments_but_preserves_active_source(self):
+  folder=self.root/'资料源/Book';folder.mkdir(parents=True);(folder/'LICENSE').write_text('license');(folder/'diagram.svg').write_text('<svg/>')
+  a={**self.a,'id':'source-a','source':'Book','path':'资料源/Book/a.md'}
+  b={**self.b,'id':'source-b','source':'Book','path':'资料源/Book/b.md'}
+  (folder/'a.md').write_text('a');(folder/'b.md').write_text('b')
+  self.rows.extend([a,b]);self.store.catalog.update({x['id']:x for x in [a,b]})
+  self.lib.delete([a['id']]);self.assertTrue((folder/'diagram.svg').exists())
+  self.lib.delete([b['id']]);self.assertFalse(folder.exists())
+ def test_import_metadata_removed_when_last_document_deleted(self):
+  folder=(self.root/self.a['path']).parent;(folder/'source-manifest.json').write_text('{}')
+  self.lib.delete([self.a['id']]);self.assertFalse(folder.exists())

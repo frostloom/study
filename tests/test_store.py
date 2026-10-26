@@ -67,11 +67,11 @@ class StudyStoreTests(unittest.TestCase):
         with self.assertRaises(ValueError): s.toggle('2026-10-26', 'a999', True)
         self.assertEqual(s.handoff('2026-10-26')['completed'], [])
 
-    def test_manual_add_requires_existing_ai_plan(self):
+    def test_manual_add_can_start_a_day_without_ai(self):
         s = self.make()
-        with self.assertRaisesRegex(ValueError, '先生成'):
-            s.add_article('2026-10-26', 'a0')
-        self.assertIsNone(s._load('2026-10-26'))
+        plan=s.add_article('2026-10-26','a0')
+        self.assertEqual([x['article_id'] for x in plan['items']],['a0'])
+        self.assertFalse(plan['items'][0]['done'])
 
     def test_replanning_cannot_silently_drop_a_checked_item(self):
         s = self.make(); p = s.generate_plan('2026-10-26')
