@@ -26,3 +26,10 @@ class RuntimeDistributionTests(unittest.TestCase):
    script="import locale,json,sys;locale.setlocale(locale.LC_CTYPE,'C');from model import ModelClient;from migration import ensure_catalog;c=ModelClient(sys.argv[1]);c.save_settings({'base_url':'https://example.com/v1','model':'\\u6a21\\u578b'});a=ensure_catalog(sys.argv[1]);assert a[0]['id']=='welcome-demo';assert c.settings()['model']=='\\u6a21\\u578b'"
    p=subprocess.run([sys.executable,'-X','utf8=0','-c',script,t],capture_output=True,env={**os.environ,'PYTHONUTF8':'0','PYTHONCOERCECLOCALE':'0'})
    self.assertEqual(p.returncode,0,p.stderr.decode('utf-8',errors='replace'))
+ def test_native_preview_can_reopen_same_editable_source_without_launcher(self):
+  from tools.preview import prepare_preview
+  with tempfile.TemporaryDirectory() as t:
+   base=Path(t);source=base/'开发源码';source.mkdir();(source/'backend_entry.py').write_text('# development',encoding='utf-8');python=base/'python';python.write_bytes(b'executable');data=base/'preview-data'
+   prepare_preview(source,python,data)
+   self.assertEqual((data/'.development-source').read_text(encoding='utf-8').splitlines(),[str(source.resolve()),str(python.resolve())])
+   self.assertEqual(list(data.iterdir()),[data/'.development-source'])

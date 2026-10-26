@@ -25,6 +25,10 @@ constexpr UINT WM_READY=WM_APP+1,WM_FAILED=WM_APP+2;
 HWND windowHandle=nullptr;HANDLE backend=nullptr,job=nullptr,instance=nullptr;
 ComPtr<ICoreWebView2Controller> controller;ComPtr<ICoreWebView2> web;
 fs::path dataRoot,sourceDir,pythonExe;std::wstring origin;bool closing=false;
+std::wstring utf8(const std::string& s){
+ int n=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),static_cast<int>(s.size()),nullptr,0);
+ if(n<=0)return L"";std::wstring value(n,L'\0');MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,s.data(),static_cast<int>(s.size()),value.data(),n);return value;
+}
 std::wstring quote(const std::wstring& v){
  std::wstring r=L"\"";size_t n=0;
  for(wchar_t c:v){if(c==L'\\'){++n;continue;}if(c==L'\"')r.append(n*2+1,L'\\');else r.append(n,L'\\');n=0;r+=c;}
@@ -126,6 +130,17 @@ int WINAPI wWinMain(HINSTANCE app,HINSTANCE,LPWSTR,int show){
   #endif
  }
  LocalFree(argv);
+ #ifdef STUDY_PREVIEW
+ if(sourceDir.empty()&&pythonExe.empty()){
+  std::ifstream saved(dataRoot/L".development-source");std::string sourceLine,pythonLine;
+  if(std::getline(saved,sourceLine)&&std::getline(saved,pythonLine)){
+   sourceDir=utf8(sourceLine);pythonExe=utf8(pythonLine);
+   if(!fs::is_regular_file(sourceDir/L"backend_entry.py")||!fs::is_regular_file(pythonExe)){
+    MessageBoxW(nullptr,L"开发源码或Python路径已变化，请重新运行 tools/preview.py。",title,MB_OK|MB_ICONERROR);return 1;
+   }
+  }
+ }
+ #endif
  std::wstring mutex=L"Local\\DailyStudy-"+std::to_wstring(std::hash<std::wstring>{}(dataRoot.wstring()));instance=CreateMutexW(nullptr,FALSE,mutex.c_str());
  if(GetLastError()==ERROR_ALREADY_EXISTS){MessageBoxW(nullptr,L"应用已经打开，请切换到已有学习窗口。",title,MB_OK);return 0;}
  WNDCLASSW wc{};wc.lpfnWndProc=WindowProc;wc.hInstance=app;wc.lpszClassName=L"DailyStudyWindow";wc.hCursor=LoadCursor(nullptr,IDC_ARROW);wc.hbrBackground=reinterpret_cast<HBRUSH>(COLOR_WINDOW+1);RegisterClassW(&wc);

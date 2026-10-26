@@ -92,6 +92,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate, WKNa
             let source = URL(fileURLWithPath: cli[sourceIndex + 1]).appendingPathComponent("backend_entry.py")
             child.executableURL = URL(fileURLWithPath: cli[pythonIndex + 1])
             args = [source.path] + args
+        } else if let saved = try? String(contentsOf: dataRoot.appendingPathComponent(".development-source"), encoding: .utf8) {
+            let paths = saved.split(separator: "\n").map(String.init)
+            if paths.count == 2 {
+                let source = URL(fileURLWithPath: paths[0]).appendingPathComponent("backend_entry.py")
+                guard FileManager.default.fileExists(atPath: source.path), FileManager.default.fileExists(atPath: paths[1]) else {
+                    fail("开发源码或Python路径已变化，请从开发目录重新运行 tools/preview.py。"); return
+                }
+                child.executableURL = URL(fileURLWithPath: paths[1])
+                args = [source.path] + args
+            }
         }
         #endif
         if channel == "preview" || CommandLine.arguments.contains("--no-legacy") { args.append("--no-legacy") }

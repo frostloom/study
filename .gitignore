@@ -18,3 +18,4 @@ profile.json
 *.app/
 .DS_Store
 release-preview/
+.development-source
