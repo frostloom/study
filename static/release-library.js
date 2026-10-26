@@ -4,7 +4,7 @@
 const rows=()=>originalDocs().filter(a=>!a.demo&&!a.is_demo&&a.id!=='welcome-demo');
 const topicRows=topic=>rows().filter(a=>(a.topic||'未分类')===topic);
 const sourcesFor=topic=>[...new Set(topicRows(topic).map(a=>a.source||'我的资料'))];
-function preferred(topic){const docs=topicRows(topic);return docs.find(a=>a.original_module)?.source||sourcesFor(topic)[0]||'';}
+function preferred(topic){const docs=topicRows(topic),sources=sourcesFor(topic);return (sources.includes('小林图解完整专栏')?'小林图解完整专栏':docs.find(a=>a.original_module)?.source)||sources[0]||'';}
 function addAction(){return '<button class="secondary" id="release-add-materials">寻找或添加资料</button>';}
 function bindAdd(){$('#release-add-materials').onclick=()=>go('settings').then(()=>document.querySelector('[data-settings-tab="materials"]')?.click());}
 window.chooseSubject=function(topic){state.topic=topic;state.source=preferred(topic);state.query='';state.page=0;return renderLibrary();};
@@ -12,7 +12,9 @@ renderLibrary=async function(){
  const topics=[...new Set(rows().map(a=>a.topic||'未分类'))];
  if(state.topic&&!topics.includes(state.topic)){state.topic='';state.source='';}
  if(!state.topic){
-  $('#page').innerHTML=heading('资料库','',addAction())+`<div class="subject-index"><section class="subject-section"><div class="subject-grid">${topics.map(t=>`<button class="subject-choice" data-subject="${esc(t)}"><strong>${esc(t)}</strong><small>${esc(sourceLabel(preferred(t)))}</small><span aria-hidden="true">›</span></button>`).join('')}</div></section>${topics.length?'':'<div class="empty"><h2>还没有资料</h2><p>添加想阅读的资料后，会在这里按分类显示。</p></div>'}</div>`;
+  const groups=[['后端与基础',['Go后端','MySQL','Redis','计算机网络','操作系统','消息队列','Kafka','RabbitMQ','REST与接口设计','接口与系统设计','Linux与工程基础']],['前端',['JavaScript','TypeScript','Vue3','HTML','CSS']],['AI 与实习',['Agent','FastAPI','Harbor评测框架','Langfuse']]];
+  const grouped=new Set(groups.flatMap(g=>g[1]));groups.push(['其他分类',topics.filter(t=>!grouped.has(t))]);
+  $('#page').innerHTML=heading('资料库','',addAction())+`<div class="subject-index">${groups.filter(([,ts])=>ts.some(t=>topics.includes(t))).map(([name,ts])=>`<section class="subject-section"><h2>${esc(name)}</h2><div class="subject-grid">${ts.filter(t=>topics.includes(t)).map(t=>`<button class="subject-choice" data-subject="${esc(t)}"><strong>${esc(t)}</strong><small>${esc(sourceLabel(preferred(t)))}</small><span aria-hidden="true">›</span></button>`).join('')}</div></section>`).join('')}${topics.length?'':'<div class="empty"><h2>还没有资料</h2><p>添加想阅读的资料后，会在这里按分类显示。</p></div>'}</div>`;
   document.querySelectorAll('[data-subject]').forEach(b=>b.onclick=()=>chooseSubject(b.dataset.subject));bindAdd();return;
  }
  const sources=sourcesFor(state.topic);if(!sources.includes(state.source))state.source=preferred(state.topic);
