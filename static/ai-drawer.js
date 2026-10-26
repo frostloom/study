@@ -29,12 +29,19 @@ function closeAI(restoreFocus=true){
  if(!state.article)return;const anchor=aiReadingAnchor();aiSaveDraft();$('#reader').classList.remove('ai-open');$('#ai-drawer').hidden=true;$('#reader-scroll').inert=false;$('#toggle-ai').setAttribute('aria-expanded','false');$('#toggle-ai').textContent='问问 AI';aiRestoreReading(anchor);
  if(restoreFocus){if(aiReturnFocus?.isConnected&&aiReturnFocus!==document.body&&!aiReturnFocus.closest('#ai-drawer')&&!aiReturnFocus.closest('#selection-menu'))aiReturnFocus.focus({preventScroll:true});else $('#toggle-ai').focus({preventScroll:true});}
 }
-function paintChat(){
+function aiScrollToReply(list,chats,reply){
+ const index=chats.findIndex(c=>c.created===reply.created&&c.question===reply.question);
+ if(index<0)return;
+ const target=list.querySelector('[data-ai-reply="'+index+'"]');if(!target)return;
+ const padding=parseFloat(getComputedStyle(list).paddingTop)||0;
+ list.scrollTop=Math.max(0,list.scrollTop+target.getBoundingClientRect().top-list.getBoundingClientRect().top-padding);
+}
+function paintChat({reply=null}={}){
  if(!state.article)return;const chats=state.article.chats,pending=aiPending.get(aiSessionKey(state.article.article.id,state.article.session_id));
- $('#chat-list').innerHTML=chats.map(c=>`<div class="chat-message user"><span class="speaker">你</span>${c.quote?`<blockquote>${esc(c.quote)}</blockquote>`:''}<div class="message-content">${esc(c.question)}</div>${c.context?`<small class="chat-source-context">${esc(c.context.section_title)} · 原文 ${c.context.characters} 字符 · 图片 ${c.context.image_count} 张 · 历史 ${c.context.history_turns} 轮</small>`:''}</div><div class="chat-message assistant"><span class="speaker"><i aria-hidden="true">✧</i> 学习助手</span><div class="message-content">${markdown(c.reply)}</div></div>`).join('')+
+ $('#chat-list').innerHTML=chats.map((c,index)=>`<div class="chat-message user"><span class="speaker">你</span>${c.quote?`<blockquote>${esc(c.quote)}</blockquote>`:''}<div class="message-content">${esc(c.question)}</div>${c.context?`<small class="chat-source-context">${esc(c.context.section_title)} · 原文 ${c.context.characters} 字符 · 图片 ${c.context.image_count} 张 · 历史 ${c.context.history_turns} 轮</small>`:''}</div><div class="chat-message assistant" data-ai-reply="${index}"><span class="speaker"><i aria-hidden="true">✧</i> 学习助手</span><div class="message-content">${markdown(c.reply)}</div></div>`).join('')+
  (pending?`<div class="chat-message user"><span class="speaker">你</span><div class="message-content">${esc(pending.question)}</div></div><div class="ai-thinking" role="status"><span class="thinking-dot"></span>正在结合原文整理回答…<small>你可以继续阅读，回答会保存在这篇文章里。</small></div>`:'')+
  (!chats.length&&!pending?(aiQuote?'<p class="ai-selection-hint">已带入选中的原文。直接发送，或补充你想弄懂的问题。</p>':`<div class="ai-welcome"><div class="ai-welcome-symbol" aria-hidden="true">✧</div><h2>新对话</h2><p>输入问题，或选中文字后提问。</p></div>`):'');
- $('#ask-button').disabled=!!pending;$('#ask-button').textContent=pending?'正在回答…':'发送问题';$('#ai-quick-prompts').hidden=!!pending;$('#chat-list').scrollTop=chats.length||pending?$('#chat-list').scrollHeight:0;
+ $('#ask-button').disabled=!!pending;$('#ask-button').textContent=pending?'正在回答…':'发送问题';$('#ai-quick-prompts').hidden=!!pending;if(reply||(!pending&&chats.length))aiScrollToReply($('#chat-list'),chats,reply||chats.at(-1));else $('#chat-list').scrollTop=chats.length||pending?$('#chat-list').scrollHeight:0;
 }
 $('#toggle-ai').onclick=()=>$('#reader').classList.contains('ai-open')?closeAI():openAI();
 $('#close-ai').onclick=()=>closeAI();
@@ -47,7 +54,7 @@ $('#ai-quick-prompts').onclick=e=>{const b=e.target.closest('[data-ai-prompt]');
 window.addEventListener('resize',aiSyncViewport);
 $('#ask-form').onsubmit=async e=>{
  e.preventDefault();if(!state.article)return;const id=state.article.article.id,sid=state.article.session_id,key=aiSessionKey(id,sid),question=$('#ask-input').value.trim(),quote=aiQuote,sectionIndex=aiSectionIndex,textOnly=$('#ai-text-only').checked;if(!question){$('#ask-input').focus();return;}if(aiPending.has(key))return;
- aiSaveDraft();aiPending.set(key,{question,quote});$('#ai-error').hidden=true;paintChat();
+ let completedReply=null;aiSaveDraft();aiPending.set(key,{question,quote});$('#ai-error').hidden=true;paintChat();
  try{
   if(state.article?.article.id===id&&state.article.session_id===sid)$('#ai-context-status').textContent='正在准备当前小节'+(textOnly?'文字…':'文字与图片…');
   const context=await api('/api/ai/context',{article_id:id,quote,section_index:sectionIndex,session_id:sid,include_images:!textOnly});
@@ -57,13 +64,13 @@ $('#ask-form').onsubmit=async e=>{
    $('#ai-context-status').textContent=context.section_title+' · 原文 '+context.characters+' 字符 · 图片 '+images.length+(context.total_images>images.length?' / '+context.total_images:'')+' 张 · 历史 '+context.history_turns+' 轮'+(textOnly?'（仅文字）':'')+(context.warnings.length?' · '+context.warnings.join('；'):'');
    $('#ai-image-previews').innerHTML=images.map(i=>'<img src="'+i.data_url+'" alt="'+esc(i.alt||'本次附图')+'" title="'+esc(i.alt||'本次附图')+'">').join('');
   }
-  const chat=await api('/api/ai/ask',{article_id:id,question,quote,section_index:context.section_index,session_id:sid,images,text_only:textOnly});
+  const chat=await api('/api/ai/ask',{article_id:id,question,quote,section_index:context.section_index,session_id:sid,images,text_only:textOnly});completedReply=chat;
   // Only clear the submitted draft. Preserve text the user typed while waiting.
   let saved={};try{saved=JSON.parse(localStorage.getItem(aiDraftKey(id,sid))||'{}');}catch{}
   if(saved.question?.trim()===question&&saved.quote===quote)localStorage.removeItem(aiDraftKey(id,sid));
   if(state.article?.article.id===id&&state.article.session_id===sid){if(!state.article.chats.some(c=>c.created===chat.created&&c.question===chat.question))state.article.chats.push(chat);if($('#ask-input').value.trim()===question&&aiQuote===quote){$('#ask-input').value='';aiQuote='';aiPaintQuote();}}
  }catch(err){if(state.article?.article.id===id&&state.article.session_id===sid){$('#ai-error').textContent=err.message+'。问题草稿已保留，可以再次发送。';$('#ai-error').hidden=false;}}
- finally{aiPending.delete(key);if(state.article?.article.id===id&&state.article.session_id===sid)paintChat();}
+ finally{aiPending.delete(key);if(state.article?.article.id===id&&state.article.session_id===sid)paintChat({reply:completedReply});}
 };
 
 function aiSessionDate(value){return String(value||'').slice(0,16).replace('T',' ');}

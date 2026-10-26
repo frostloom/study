@@ -1,0 +1,10 @@
+const fs=require('fs'),vm=require('vm'),assert=require('assert');
+const source=fs.readFileSync('static/ai-drawer.js','utf8').replace(/\r\n/g,'\n'),helper=source.indexOf('function aiScrollToReply('),start=helper<0?source.indexOf('function paintChat('):helper,end=source.indexOf("\n$('#toggle-ai')",start);
+const list={innerHTML:'',scrollTop:100,scrollHeight:3600,getBoundingClientRect(){return {top:20}},querySelector(selector){const m=selector.match(/data-ai-reply="(\d+)"/);if(!m)return null;const offset=Number(m[1])*900;return {getBoundingClientRect(){return {top:20+offset-list.scrollTop}}}}};
+const nodes=new Map([['#chat-list',list]]),node=s=>{if(!nodes.has(s))nodes.set(s,{});return nodes.get(s)};
+const chats=[{created:'one',question:'q1',reply:'old long answer'},{created:'two',question:'q2',reply:'another old answer'},{created:'three',question:'q3',reply:'new long answer'}];
+const ctx={state:{article:{article:{id:'a'},session_id:'s',chats}},aiPending:new Map(),aiSessionKey:(a,s)=>a+':'+s,$:node,esc:String,markdown:String,aiQuote:'',getComputedStyle:()=>({paddingTop:'24px'})};vm.createContext(ctx);vm.runInContext(source.slice(start,end),ctx);
+ctx.paintChat({reply:chats[2]});assert.equal(list.scrollTop,1776,'new answer should align its own start, not conversation top or bottom');
+chats.push({created:'four',question:'followup',reply:'new follow-up'});ctx.paintChat({reply:chats[3]});assert.equal(list.scrollTop,2676,'follow-up should target the latest individual answer');
+list.scrollTop=5;ctx.paintChat();assert.equal(list.scrollTop,2676,'reopening a completed session should still reveal its latest answer start');
+console.log('each completed reply opens at its own start passed');
