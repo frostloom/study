@@ -358,11 +358,12 @@ class Store:
             result.append(dict(row)|dict(title=(owned[0]['question'][:45] if owned else '新对话'),count=len(owned),legacy=row['id']==uuid.uuid5(uuid.NAMESPACE_URL,'study-legacy:'+article_id).hex))
         return result
 
-    def add_chat(self, article_id, question, reply, quote='', section_index=None, section_title='', session_id=None):
+    def add_chat(self, article_id, question, reply, quote='', section_index=None, section_title='', session_id=None, context=None):
         d=today();now=datetime.now(ZoneInfo('Asia/Shanghai')).isoformat()
         with self.lock:
             session=self.chat_session(article_id,session_id)
             body=dict(article_id=article_id,question=question,reply=reply,quote=quote,section_index=section_index,section_title=section_title,session_id=session['id'],created=now,date=d)
+            if context is not None:body['context']=context
             with self.connect() as c:c.execute('INSERT INTO conversations(day,article_id,body,created) VALUES (?,?,?,?)',(d,article_id,json.dumps(body,ensure_ascii=False),now))
         return body
 

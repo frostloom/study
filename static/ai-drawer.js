@@ -14,14 +14,14 @@ function resetAIForArticle(keepOpen=false){
  if(!keepOpen){$('#reader').classList.remove('ai-open','ai-collapsed');$('#ai-drawer').hidden=true;$('#reader-scroll').inert=false;$('#toggle-ai').setAttribute('aria-expanded','false');$('#toggle-ai').textContent='问问 AI';}
  const oldKey='study-ai-draft:'+state.article.article.id,legacyDraft=localStorage.getItem(oldKey);if(legacyDraft){const sid=state.article.sessions?.find(x=>x.legacy)?.id||state.article.session_id;const key=aiDraftKey(state.article.article.id,sid);if(!localStorage.getItem(key))localStorage.setItem(key,legacyDraft);localStorage.removeItem(oldKey);}localStorage.setItem('study-active-session:'+state.article.article.id,state.article.session_id);$('#ai-sessions').hidden=true;$('#history-ai').setAttribute('aria-expanded','false');
  let draft={};try{draft=JSON.parse(localStorage.getItem(aiDraftKey(state.article.article.id))||'{}');}catch{}
- aiSectionIndex=Number.isInteger(draft.section_index)?draft.section_index:state.article.chats.at(-1)?.section_index??null;aiQuote=typeof draft.quote==='string'?draft.quote:'';$('#ask-input').value=typeof draft.question==='string'?draft.question:'';aiPaintQuote();$('#ai-error').hidden=true;paintChat();
+ $('#ai-image-previews').innerHTML='';$('#ai-context-status').textContent='发送时附带当前小节原文与插图';$('#ai-text-only').checked=false;aiSectionIndex=Number.isInteger(draft.section_index)?draft.section_index:state.article.chats.at(-1)?.section_index??null;aiQuote=typeof draft.quote==='string'?draft.quote:'';$('#ask-input').value=typeof draft.question==='string'?draft.question:'';aiPaintQuote();$('#ai-error').hidden=true;paintChat();
 }
 function aiReadingAnchor(){const root=$('#reader-scroll'),top=root.getBoundingClientRect().top;const node=[...root.querySelectorAll('h1,h2,h3,p,li,pre')].find(n=>n.getBoundingClientRect().bottom>top+20&&n.getBoundingClientRect().top<root.getBoundingClientRect().bottom);return node?{node,offset:node.getBoundingClientRect().top-top,atTop:root.scrollTop<1}:null;}
 function aiRestoreReading(anchor){if(anchor?.node.isConnected){const root=$('#reader-scroll');root.scrollTo({top:anchor.atTop?0:root.scrollTop+anchor.node.getBoundingClientRect().top-root.getBoundingClientRect().top-anchor.offset,behavior:'instant'});}}
 function openAI(quote,sectionIndex){
  if(!state.article)return;const anchor=aiReadingAnchor();
  if(!$('#reader').classList.contains('ai-open'))aiReturnFocus=document.activeElement;
- if(typeof quote==='string'){aiSectionIndex=Number.isInteger(sectionIndex)?sectionIndex:aiVisibleSection();aiQuote=quote;$('#ask-input').value='请用一个简单例子解释这段内容。';aiSaveDraft();}
+ if(typeof quote==='string'){$('#ai-image-previews').innerHTML='';$('#ai-context-status').textContent='发送时附带当前小节原文与插图';aiSectionIndex=Number.isInteger(sectionIndex)?sectionIndex:aiVisibleSection();aiQuote=quote;$('#ask-input').value='请用一个简单例子解释这段内容。';aiSaveDraft();}
  if(aiSectionIndex===null)aiSectionIndex=aiVisibleSection();$('#ai-drawer').hidden=false;$('#reader').classList.add('ai-open');$('#toggle-ai').setAttribute('aria-expanded','true');$('#toggle-ai').textContent='关闭 AI';$('#selection-menu').hidden=true;aiSyncViewport();aiRestoreReading(anchor);aiPaintQuote();paintChat();$('#ask-input').focus({preventScroll:true});
 }
 function expandAI(){openAI();}
@@ -31,7 +31,7 @@ function closeAI(restoreFocus=true){
 }
 function paintChat(){
  if(!state.article)return;const chats=state.article.chats,pending=aiPending.get(aiSessionKey(state.article.article.id,state.article.session_id));
- $('#chat-list').innerHTML=chats.map(c=>`<div class="chat-message user"><span class="speaker">你</span>${c.quote?`<blockquote>${esc(c.quote)}</blockquote>`:''}<div class="message-content">${esc(c.question)}</div></div><div class="chat-message assistant"><span class="speaker"><i aria-hidden="true">✧</i> 学习助手</span><div class="message-content">${markdown(c.reply)}</div></div>`).join('')+
+ $('#chat-list').innerHTML=chats.map(c=>`<div class="chat-message user"><span class="speaker">你</span>${c.quote?`<blockquote>${esc(c.quote)}</blockquote>`:''}<div class="message-content">${esc(c.question)}</div>${c.context?`<small class="chat-source-context">${esc(c.context.section_title)} · 原文 ${c.context.characters} 字符 · 图片 ${c.context.image_count} 张 · 历史 ${c.context.history_turns} 轮</small>`:''}</div><div class="chat-message assistant"><span class="speaker"><i aria-hidden="true">✧</i> 学习助手</span><div class="message-content">${markdown(c.reply)}</div></div>`).join('')+
  (pending?`<div class="chat-message user"><span class="speaker">你</span><div class="message-content">${esc(pending.question)}</div></div><div class="ai-thinking" role="status"><span class="thinking-dot"></span>正在结合原文整理回答…<small>你可以继续阅读，回答会保存在这篇文章里。</small></div>`:'')+
  (!chats.length&&!pending?(aiQuote?'<p class="ai-selection-hint">已带入选中的原文。直接发送，或补充你想弄懂的问题。</p>':`<div class="ai-welcome"><div class="ai-welcome-symbol" aria-hidden="true">✧</div><h2>新对话</h2><p>输入问题，或选中文字后提问。</p></div>`):'');
  $('#ask-button').disabled=!!pending;$('#ask-button').textContent=pending?'正在回答…':'发送问题';$('#ai-quick-prompts').hidden=!!pending;$('#chat-list').scrollTop=chats.length||pending?$('#chat-list').scrollHeight:0;
@@ -40,14 +40,24 @@ $('#toggle-ai').onclick=()=>$('#reader').classList.contains('ai-open')?closeAI()
 $('#close-ai').onclick=()=>closeAI();
 $('#clear-quote').onclick=()=>{aiQuote='';aiPaintQuote();aiSaveDraft();};
 $('#ask-input').addEventListener('input',aiSaveDraft);
-$('#ask-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&(e.metaKey||e.ctrlKey)){e.preventDefault();$('#ask-form').requestSubmit();}});
+function aiClearQuestion(){$('#ask-input').value='';aiSaveDraft();$('#ask-input').focus();}
+$('#clear-ai-input').onclick=aiClearQuestion;
+AICompose.bindInput($('#ask-input'),{send:()=>$('#ask-form').requestSubmit(),clear:aiClearQuestion});
 $('#ai-quick-prompts').onclick=e=>{const b=e.target.closest('[data-ai-prompt]');if(!b)return;$('#ask-input').value=b.dataset.aiPrompt;aiSaveDraft();$('#ask-input').focus();};
 window.addEventListener('resize',aiSyncViewport);
 $('#ask-form').onsubmit=async e=>{
- e.preventDefault();if(!state.article)return;const id=state.article.article.id,sid=state.article.session_id,key=aiSessionKey(id,sid),question=$('#ask-input').value.trim(),quote=aiQuote;if(!question){$('#ask-input').focus();return;}if(aiPending.has(key))return;
+ e.preventDefault();if(!state.article)return;const id=state.article.article.id,sid=state.article.session_id,key=aiSessionKey(id,sid),question=$('#ask-input').value.trim(),quote=aiQuote,sectionIndex=aiSectionIndex,textOnly=$('#ai-text-only').checked;if(!question){$('#ask-input').focus();return;}if(aiPending.has(key))return;
  aiSaveDraft();aiPending.set(key,{question,quote});$('#ai-error').hidden=true;paintChat();
  try{
-  const chat=await api('/api/ai/ask',{article_id:id,question,quote,section_index:aiSectionIndex,session_id:sid});
+  if(state.article?.article.id===id&&state.article.session_id===sid)$('#ai-context-status').textContent='正在准备当前小节'+(textOnly?'文字…':'文字与图片…');
+  const context=await api('/api/ai/context',{article_id:id,quote,section_index:sectionIndex,session_id:sid,include_images:!textOnly});
+  if(!textOnly&&context.failed_images)throw new Error(context.warnings.join('；')+'；未自动丢弃图片，可重试或选择仅文字');
+  const images=textOnly?[]:await AICompose.prepareImages(context.images);
+  if(state.article?.article.id===id&&state.article.session_id===sid){
+   $('#ai-context-status').textContent=context.section_title+' · 原文 '+context.characters+' 字符 · 图片 '+images.length+(context.total_images>images.length?' / '+context.total_images:'')+' 张 · 历史 '+context.history_turns+' 轮'+(textOnly?'（仅文字）':'')+(context.warnings.length?' · '+context.warnings.join('；'):'');
+   $('#ai-image-previews').innerHTML=images.map(i=>'<img src="'+i.data_url+'" alt="'+esc(i.alt||'本次附图')+'" title="'+esc(i.alt||'本次附图')+'">').join('');
+  }
+  const chat=await api('/api/ai/ask',{article_id:id,question,quote,section_index:context.section_index,session_id:sid,images,text_only:textOnly});
   // Only clear the submitted draft. Preserve text the user typed while waiting.
   let saved={};try{saved=JSON.parse(localStorage.getItem(aiDraftKey(id,sid))||'{}');}catch{}
   if(saved.question?.trim()===question&&saved.quote===quote)localStorage.removeItem(aiDraftKey(id,sid));

@@ -43,3 +43,20 @@ class ModelAPIReleaseTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    m=ModelClient(t);m.save_settings({'base_url':'https://example.com/v1','model':'x','api_key':'s'})
    m.save_settings({'base_url':'https://example.com/v1/','api_key':''});self.assertEqual(m.settings()['api_key'],'s')
+
+ def test_chat_accepts_normal_markdown_without_json_wrapper(self):
+  from learning import CHAT_SCHEMA
+  with tempfile.TemporaryDirectory() as t:
+   m=ModelClient(t);m.save_settings({'base_url':'https://example.com/v1','model':'x'})
+   with patch.object(m,'_request',return_value='OK'):m.test_connection()
+   with patch.object(m,'_request',return_value='## 原理\n正常回答，不需要 JSON。') as request:
+    result=m.generate('Explain',CHAT_SCHEMA)
+   self.assertEqual(result['reply'],'## 原理\n正常回答，不需要 JSON。')
+   self.assertNotIn('只输出JSON',request.call_args.args[1][0]['content'])
+ def test_structured_plan_still_rejects_non_json(self):
+  from learning import PLAN_SCHEMA
+  with tempfile.TemporaryDirectory() as t:
+   m=ModelClient(t);m.save_settings({'base_url':'https://example.com/v1','model':'x'})
+   with patch.object(m,'_request',return_value='OK'):m.test_connection()
+   with patch.object(m,'_request',return_value='Just read something'):
+    with self.assertRaises(ValueError):m.generate('Plan',PLAN_SCHEMA)

@@ -148,7 +148,8 @@ def make_server(root,catalog,port=8765,model=None,channel='stable'):
                 if route=='/api/plan/add':
                     with learning.lock:return self.send_json(store.add_article(p['date'],p['article_id']))
                 if route=='/api/ai/plan':return self.send_json(learning.plan(p.get('date',today())))
-                if route=='/api/ai/ask':return self.send_json(learning.ask(p['article_id'],p['question'],p.get('quote',''),p.get('section_index'),p.get('session_id')))
+                if route=='/api/ai/context':return self.send_json(learning.prepare_context(p['article_id'],p.get('quote',''),p.get('section_index'),p.get('session_id'),p.get('include_images',True)))
+                if route=='/api/ai/ask':return self.send_json(learning.ask(p['article_id'],p['question'],p.get('quote',''),p.get('section_index'),p.get('session_id'),p.get('images'),p.get('text_only',False)))
                 if route=='/api/chat/new':
                     session=store.new_chat_session(p['article_id']);return self.send_json(dict(session_id=session['id'],sessions=store.chat_sessions(p['article_id']),chats=[]))
                 if route=='/api/note':return self.send_json(learning.annotate(p['article_id'],p['quote'],p['kind'],p.get('note',''),p.get('prefix',''),p.get('suffix','')))
