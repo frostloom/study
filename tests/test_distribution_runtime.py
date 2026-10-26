@@ -31,5 +31,13 @@ class RuntimeDistributionTests(unittest.TestCase):
   with tempfile.TemporaryDirectory() as t:
    base=Path(t);source=base/'开发源码';source.mkdir();(source/'backend_entry.py').write_text('# development',encoding='utf-8');python=base/'python';python.write_bytes(b'executable');data=base/'preview-data'
    prepare_preview(source,python,data)
-   self.assertEqual((data/'.development-source').read_text(encoding='utf-8').splitlines(),[str(source.resolve()),str(python.resolve())])
+   self.assertEqual((data/'.development-source').read_text(encoding='utf-8').splitlines(),[str(source.resolve()),str(python.absolute())])
    self.assertEqual(list(data.iterdir()),[data/'.development-source'])
+ def test_preview_keeps_venv_python_symlink_path(self):
+  from tools.preview import prepare_preview
+  with tempfile.TemporaryDirectory() as t:
+   base=Path(t);source=base/'source';source.mkdir();(source/'backend_entry.py').write_text('# source',encoding='utf-8');real=base/'base-python';real.write_bytes(b'executable');venv=base/'venv';venv.mkdir();python=venv/'python'
+   try:python.symlink_to(real)
+   except OSError:self.skipTest('platform cannot create executable symlink')
+   prepare_preview(source,python,base/'preview')
+   self.assertEqual((base/'preview/.development-source').read_text(encoding='utf-8').splitlines()[1],str(python.absolute()),'must retain venv identity, not its shared base interpreter')
